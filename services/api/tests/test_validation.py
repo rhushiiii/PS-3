@@ -563,7 +563,9 @@ def test_concurrent_initial_validation_and_revalidation(
         with db_engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE submission_reviews, validation_findings, "
+                    "TRUNCATE submission_reviews, apaar_verifications, "
+                    "case_events, case_records, review_cases, "
+                    "validation_findings, "
                     "validation_runs, "
                     "student_record_versions, submission_batches, submission_scopes, "
                     "audit_events, users, intake_rules, programmes, institutions"
@@ -875,7 +877,9 @@ def test_loopback_http_validation_smoke(
         with db_engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE submission_reviews, validation_findings, "
+                    "TRUNCATE submission_reviews, apaar_verifications, "
+                    "case_events, case_records, review_cases, "
+                    "validation_findings, "
                     "validation_runs, "
                     "student_record_versions, submission_batches, submission_scopes, "
                     "audit_events, users, intake_rules, programmes, institutions"

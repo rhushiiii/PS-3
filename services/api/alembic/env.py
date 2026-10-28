@@ -3,9 +3,11 @@ from app.core.config import Settings
 from app.core.database import Base, build_engine
 from app.modules.audit import models as audit_models  # noqa: F401
 from app.modules.auth import models as auth_models  # noqa: F401
+from app.modules.cases import models as case_models  # noqa: F401
 from app.modules.institutions import models as institution_models  # noqa: F401
 from app.modules.submissions import models as submission_models  # noqa: F401
 from app.modules.validation import models as validation_models  # noqa: F401
+from app.modules.verification import models as verification_models  # noqa: F401
 
 # Explicit imports register feature-owned tables with the shared metadata.
 target_metadata = Base.metadata

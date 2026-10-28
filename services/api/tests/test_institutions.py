@@ -207,6 +207,10 @@ def test_openapi_is_limited_to_implemented_milestones(client: TestClient) -> Non
         "/api/v1/submissions/{batch_id}/reviews",
         "/api/v1/submissions/{batch_id}/reviews/{review_id}",
         "/api/v1/submissions/{batch_id}/activate",
+        "/api/v1/records/{record_version_id}/apaar-verify",
+        "/api/v1/cases",
+        "/api/v1/cases/{case_id}",
+        "/api/v1/cases/{case_id}/actions",
     }
     assert "401" in paths["/api/v1/institutions"]["get"]["responses"]
 

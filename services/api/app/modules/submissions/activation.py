@@ -15,6 +15,7 @@ from app.core.database import get_session
 from app.core.http import APIError
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
+from app.modules.cases.services import record_correction_received
 from app.modules.institutions.models import Institution, Programme
 from app.modules.submissions.models import (
     ProcessingStatus,
@@ -467,6 +468,7 @@ def activate(
         batch.activated_at = datetime.now(UTC)
         scope.current_batch_id = batch.id
         scope.revision += 1
+        record_correction_received(session, batch)
         session.flush()
         record_action(
             session,

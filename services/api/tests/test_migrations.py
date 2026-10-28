@@ -38,6 +38,10 @@ def test_migration_roundtrip_and_metadata(
         "validation_runs",
         "validation_findings",
         "submission_reviews",
+        "apaar_verifications",
+        "review_cases",
+        "case_records",
+        "case_events",
     }
     with db_engine.connect() as connection:
         assert (

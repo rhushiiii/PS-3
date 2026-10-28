@@ -11,10 +11,12 @@ from app.core.http import install_http_handling
 from app.modules.auth.routes import demo_router
 from app.modules.auth.routes import router as identity_router
 from app.modules.auth.services import DemoTokenVerifier
+from app.modules.cases.routes import router as cases_router
 from app.modules.health import router
 from app.modules.institutions.routes import router as institution_router
 from app.modules.submissions.routes import router as submission_router
 from app.modules.validation.routes import router as validation_router
+from app.modules.verification.routes import router as verification_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -49,6 +51,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(institution_router)
     application.include_router(submission_router)
     application.include_router(validation_router)
+    application.include_router(verification_router)
+    application.include_router(cases_router)
     if config.demo_auth:
         application.include_router(demo_router)
     return application
