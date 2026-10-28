@@ -29,9 +29,9 @@ export function errorMessage(error: unknown): string {
     case "DATABASE_UNAVAILABLE":
       return "The database is unavailable. Your information has not been replaced with sample values. Please try again.";
     case "DEMO_LOCAL_ONLY":
-      return "Demo access requires a direct local connection and an approved browser origin.";
+      return "Access requires a direct local connection and an approved browser origin.";
     case "NOT_AUTHENTICATED":
-      return "This demo account is unavailable. Check that the local synthetic accounts have been seeded.";
+      return "This account is unavailable. Check that the local synthetic accounts have been seeded.";
     case "INVALID_RESPONSE":
       return "The API returned an unexpected response. Please check the local setup.";
     default:

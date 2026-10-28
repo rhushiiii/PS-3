@@ -109,7 +109,7 @@ export function InstitutionProfile({
             </section>
             <section className="metadata-item">
               <span className="tiny-label">DATA CONTEXT</span>
-              <strong>Synthetic demo records</strong>
+              <strong>Synthetic records</strong>
             </section>
           </div>
           <section

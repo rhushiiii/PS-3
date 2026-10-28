@@ -13,6 +13,7 @@ import {
   DashboardFilters,
   DashboardTable,
   MetricCard,
+  StatusDonut,
   countValue,
   displayCount,
   prettyLabel,
@@ -136,6 +137,7 @@ export function AicteDashboard() {
       : [],
   });
   const categoryTotals: Record<string, number> = {};
+  const statusTotals: Record<string, number> = {};
   for (const query of summaries) {
     const categories = valueObject(valueObject(query.data?.totals)?.categories);
     for (const [key, raw] of Object.entries(categories ?? {})) {
@@ -143,7 +145,16 @@ export function AicteDashboard() {
       if (count !== null)
         categoryTotals[key] = (categoryTotals[key] ?? 0) + count;
     }
+    const statuses = valueObject(valueObject(query.data?.totals)?.statuses);
+    for (const [key, raw] of Object.entries(statuses ?? {})) {
+      const count = countValue(raw);
+      if (count !== null) statusTotals[key] = (statusTotals[key] ?? 0) + count;
+    }
   }
+  const statusData = Object.entries(statusTotals)
+    .map(([label, value]) => ({ label, value }))
+    .filter((item) => item.value > 0);
+  const statusTotal = statusData.reduce((sum, item) => sum + item.value, 0);
   const successfulSummaries = summaries.flatMap((query) =>
     query.data ? [query.data] : [],
   );
@@ -244,7 +255,7 @@ export function AicteDashboard() {
     <div className="dashboard-page">
       <header className="page-heading dashboard-heading">
         <div>
-          <p className="eyebrow">AICTE WORKSPACE · SYNTHETIC DATA</p>
+          <p className="eyebrow">AICTE WORKSPACE</p>
           <h1>{isManager ? "Aggregate overview" : "Institution dashboard"}</h1>
           <p>
             {isManager
@@ -252,7 +263,7 @@ export function AicteDashboard() {
               : "Compare current activated declarations and assessment freshness across permitted institutions."}
           </p>
         </div>
-        <span className="status-badge neutral">DEMO data</span>
+        <span className="status-badge neutral">Synthetic data</span>
       </header>
       <section className="panel dashboard-panel" aria-label="Dashboard filters">
         <DashboardFilters
@@ -359,7 +370,7 @@ export function AicteDashboard() {
               }
             />
             <MetricCard
-              label="Demo ACTIVE enrolments"
+              label="Active enrolments"
               value={
                 pendingSummaries
                   ? "Loading"
@@ -369,7 +380,7 @@ export function AicteDashboard() {
                       ? "Unavailable"
                       : displayCount(totals.active)
               }
-              note="Prototype status accounting, not official policy"
+              note="Internal status accounting, not official policy"
             />
             <MetricCard
               label="Programme declaration coverage"
@@ -432,7 +443,7 @@ export function AicteDashboard() {
                   <p className="eyebrow">CURRENT DECLARATIONS</p>
                   <h2 id="aicte-category-title">Category distribution</h2>
                 </div>
-                <span className="status-badge neutral">DEMO accounting</span>
+                <span className="status-badge neutral">Local accounting</span>
               </header>
               {pendingSummaries ? (
                 <Loading label="Loading category totals…" />
@@ -448,6 +459,12 @@ export function AicteDashboard() {
                   }))}
                   emptyLabel="No current declarations are available across this selection."
                 />
+              )}
+              {!pendingSummaries && statusTotal > 0 && (
+                <>
+                  <h3 className="chart-subheading">Status breakdown</h3>
+                  <StatusDonut statuses={statusData} total={statusTotal} />
+                </>
               )}
               {failedSummaries.length > 0 && successfulSummaries.length > 0 && (
                 <p className="partial-note">
@@ -475,7 +492,7 @@ export function AicteDashboard() {
                       <th scope="col">Region</th>
                       <th scope="col">Coverage</th>
                       <th scope="col">Declared</th>
-                      <th scope="col">Demo ACTIVE</th>
+                      <th scope="col">Active</th>
                       <th scope="col">Categories</th>
                       {isOfficer && <th scope="col">Assessment</th>}
                     </tr>
@@ -631,7 +648,7 @@ export function AicteDashboard() {
                               ? Object.entries(institutionCategories)
                                   .map(
                                     ([key, value]) =>
-                                      `${prettyLabel(key)} ${value.declared.toLocaleString()} declared · ${value.active.toLocaleString()} demo ACTIVE`,
+                                      `${prettyLabel(key)} ${value.declared.toLocaleString()} declared · ${value.active.toLocaleString()} active`,
                                   )
                                   .join(" · ")
                               : data && coverage?.status === "NONE"
@@ -680,7 +697,7 @@ export function AicteDashboard() {
             )}
             <p>
               Counts use current activated declarations only. Intake comparisons
-              are configured DEMO rules, not official AICTE compliance
+              are configured local rules, not official AICTE compliance
               decisions.
             </p>
           </section>

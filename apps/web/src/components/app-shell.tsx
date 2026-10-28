@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import { homeFor, useSession, type Role } from "@/features/auth/session";
-import { DemoBanner, Loading } from "@/components/ui/feedback";
+import { BrandMark } from "@/components/brand-mark";
+import { DataNotice, Loading } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
 
 const roleNames: Record<Role, string> = {
@@ -85,23 +86,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           },
         ]
       : []),
+    ...(institution || session.user.role === "AICTE_OFFICER"
+      ? [
+          {
+            href: "/cases",
+            label: "Cases",
+            icon: "flag" as const,
+          },
+        ]
+      : []),
   ];
   const currentLabel =
     links.find((link) => link.href === pathname)?.label ?? label;
 
   const navigation = (
     <>
-      <Link
-        className="brand"
-        href={destination}
-        onClick={() => menu.current?.close()}
-      >
-        <span className="brand-mark">
-          S<span>26</span>
-        </span>
-        <span>
-          SIH26263<small>Admissions workspace</small>
-        </span>
+      <Link href={destination} onClick={() => menu.current?.close()}>
+        <BrandMark tagline="Admissions workspace" />
       </Link>
       <p className="nav-caption">WORKSPACE</p>
       <nav aria-label="Main navigation">
@@ -119,7 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        <span className="tiny-label">LOCAL DEMO</span>
+        <span className="tiny-label">SECURE WORKSPACE</span>
         <strong>{roleNames[session.user.role]}</strong>
         <p>Synthetic accounts. Backend permissions apply to every request.</p>
         <button className="sign-out" onClick={signOut}>
@@ -161,12 +162,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </div>
         </header>
-        <DemoBanner />
+        <DataNotice />
         <main id="main-content" className="page-content" tabIndex={-1}>
           {children}
         </main>
         <footer className="portal-footer">
-          SIH26263 prototype
+          PRAVYA
           <span>
             Institution declarations · Local checks · Traceable history
           </span>

@@ -163,7 +163,7 @@ export function CandidateUpload() {
     );
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "sih26263-students-v1.csv";
+    anchor.download = "pravya-students-v1.csv";
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
@@ -492,8 +492,8 @@ export function CandidateUpload() {
       </div>
       <p className="data-note">
         Processing is separate from student validation, snapshot activation and
-        government verification. Only synthetic data is permitted in this
-        prototype.
+        government verification. Only synthetic data is permitted on this
+        platform.
       </p>
     </>
   );

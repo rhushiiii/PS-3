@@ -1,48 +1,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { demoAccounts as accounts } from "@/features/auth/accounts";
 import { homeFor, useSession } from "@/features/auth/session";
 import { ApiError, errorMessage } from "@/lib/api/client";
-import { DemoBanner } from "@/components/ui/feedback";
+import { DataNotice } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
-
-const accounts = [
-  {
-    alias: "cedar_admin",
-    label: "Demo Cedar Institute",
-    role: "Institution administrator",
-    monogram: "CE",
-  },
-  {
-    alias: "maple_admin",
-    label: "Demo Maple Institute",
-    role: "Institution administrator",
-    monogram: "MA",
-  },
-  {
-    alias: "willow_admin",
-    label: "Demo Willow Institute",
-    role: "Institution administrator",
-    monogram: "WI",
-  },
-  {
-    alias: "demo_officer",
-    label: "Demo AICTE officer",
-    role: "Institution review access",
-    monogram: "OF",
-  },
-  {
-    alias: "demo_manager",
-    label: "Demo AICTE manager",
-    role: "Institution metadata access",
-    monogram: "MG",
-  },
-];
 
 export function Login() {
   const { session, reason, signingIn, signIn } = useSession();
-  const [alias, setAlias] = useState("cedar_admin");
+  const searchParams = useSearchParams();
+  const requested = searchParams.get("alias");
+  const [alias, setAlias] = useState(
+    accounts.some((account) => account.alias === requested)
+      ? (requested as string)
+      : "cedar_admin",
+  );
+  // Track the last-seen ?alias= and adjust selection during render (not in
+  // an effect) when it changes — e.g. clicking a different account in the
+  // nav dropdown while already on this page. See "Adjusting state when a
+  // prop changes" in the React docs. The useState above already seeds the
+  // correct value on first render, so this only reacts to later changes.
+  const [seenRequested, setSeenRequested] = useState(requested);
+  if (requested !== seenRequested) {
+    setSeenRequested(requested);
+    if (requested && accounts.some((account) => account.alias === requested))
+      setAlias(requested);
+  }
   const [error, setError] = useState<unknown>(null);
   const router = useRouter();
   const enabled = process.env.NEXT_PUBLIC_DEMO_UI_ENABLED === "true";
@@ -64,46 +49,35 @@ export function Login() {
 
   return (
     <div className="login-page">
-      <header className="login-header">
-        <div className="brand">
-          <span className="brand-mark">
-            S<span>26</span>
-          </span>
-          <span>
-            SIH26263<small>Admissions workspace</small>
-          </span>
-        </div>
-        <span className="local-tag">Local prototype</span>
-      </header>
       <main className="login-main">
         <section className="login-card" aria-labelledby="login-title">
           <p className="eyebrow">A CLEAR START</p>
-          <h1 id="login-title">Sign in to the prototype</h1>
+          <h1 id="login-title">Sign in to PRAVYA</h1>
           <p className="intro">
-            Choose a synthetic account to open its permitted workspace. Access
-            is resolved by the backend.
+            Choose an account to open its permitted workspace. Access is
+            resolved by the backend.
           </p>
-          <DemoBanner />
+          <DataNotice />
           {reason && (
             <p className="session-notice" role="alert">
               {reason === "expired"
-                ? "Your demo session expired. Select a demo account to continue."
-                : "Your session is no longer valid. Select a demo account to continue."}
+                ? "Your session expired. Select an account to continue."
+                : "Your session is no longer valid. Select an account to continue."}
             </p>
           )}
           {!enabled ? (
             <section className="disabled-notice" role="status">
-              <h2>Demo sign-in is disabled</h2>
+              <h2>Sign-in is disabled</h2>
               <p>
-                The local demo interface must be explicitly enabled by the
-                operator. Backend demo authentication must also be configured
-                for direct local access.
+                The local sign-in interface must be explicitly enabled by the
+                operator. Backend authentication must also be configured for
+                direct local access.
               </p>
             </section>
           ) : (
             <form onSubmit={submit} aria-busy={signingIn}>
               <fieldset className="account-options" disabled={signingIn}>
-                <legend>Select a demo account</legend>
+                <legend>Select an account</legend>
                 {accounts.map((account) => (
                   <label
                     key={account.alias}
@@ -131,7 +105,7 @@ export function Login() {
                 <div className="login-error" role="alert">
                   <p>
                     {error instanceof ApiError && error.status === 404
-                      ? "Demo sign-in is unavailable. Check that the local API has demo authentication enabled."
+                      ? "Sign-in is unavailable. Check that the local API has authentication enabled."
                       : errorMessage(error)}
                   </p>
                   {error instanceof ApiError && error.requestId && (
@@ -144,9 +118,7 @@ export function Login() {
                 disabled={signingIn}
                 type="submit"
               >
-                {signingIn
-                  ? "Opening your workspace…"
-                  : "Continue with demo account"}
+                {signingIn ? "Opening your workspace…" : "Continue"}
                 <Icon name="arrow" />
               </button>
             </form>

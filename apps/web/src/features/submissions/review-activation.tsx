@@ -119,15 +119,15 @@ function CountComparison({
         >
           <table className="review-table">
             <caption>
-              Candidate and current category counts · DEMO accounting
+              Candidate and current category counts · local accounting
             </caption>
             <thead>
               <tr>
                 <th scope="col">Category</th>
                 <th scope="col">Current declared</th>
                 <th scope="col">Candidate declared</th>
-                <th scope="col">Current demo ACTIVE</th>
-                <th scope="col">Candidate demo ACTIVE</th>
+                <th scope="col">Current active</th>
+                <th scope="col">Candidate active</th>
                 <th scope="col">Declared change</th>
                 <th scope="col">ACTIVE change</th>
               </tr>
@@ -674,8 +674,8 @@ export function ReviewActivation({
           or transfers.
         </span>
         <span>
-          All capacities and active-status counts shown here are configured DEMO
-          comparisons, not official AICTE policy.
+          All capacities and active-status counts shown here are configured
+          local comparisons, not official AICTE policy.
         </span>
       </div>
 
@@ -691,14 +691,14 @@ export function ReviewActivation({
           note="This candidate only"
         />
         <CountCard
-          title="Current demo ACTIVE enrolments"
+          title="Current active enrolments"
           value={current?.demo_active_records}
           note={current ? "Activated snapshot only" : "No current snapshot"}
         />
         <CountCard
-          title="Candidate demo ACTIVE enrolments"
+          title="Candidate active enrolments"
           value={candidate?.demo_active_records}
-          note="Demo status rule; not official policy"
+          note="Internal status rule; not official policy"
         />
         <CountCard
           title="Added identifiers"
@@ -861,8 +861,8 @@ export function ReviewActivation({
             <h3>Eligibility and validation findings</h3>
             <p>
               Structural issues block activation. Reviewable APAAR, duplicate
-              and demo-intake findings stay visible but do not automatically
-              block when rows remain countable.
+              and intake findings stay visible but do not automatically block
+              when rows remain countable.
             </p>
           </div>
           <Link
@@ -904,7 +904,7 @@ export function ReviewActivation({
             </span>
             <p>
               Missing or malformed APAAR, possible overlaps, and comparisons
-              against configured DEMO intake rules are not official identity
+              against configured intake rules are not official identity
               verification, proof of fraud, or official AICTE violations.
             </p>
           </div>
@@ -1012,7 +1012,7 @@ export function ReviewActivation({
                   checked={reviewWarnings}
                   onChange={(event) => setReviewWarnings(event.target.checked)}
                 />
-                I reviewed the APAAR, possible duplicate and configured DEMO
+                I reviewed the APAAR, possible duplicate and configured local
                 intake findings. I understand these are review signals, not
                 official verification or fraud determinations.
               </label>

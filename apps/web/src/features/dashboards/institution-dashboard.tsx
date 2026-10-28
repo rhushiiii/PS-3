@@ -14,6 +14,7 @@ import {
   DashboardFilters,
   DashboardTable,
   MetricCard,
+  StatusDonut,
   countValue,
   displayCount,
   prettyLabel,
@@ -139,6 +140,11 @@ export function InstitutionDashboard({
               ?.declared_records,
           ),
   }));
+  const statusTotals = valueObject(counts?.statuses) ?? {};
+  const statusData = Object.entries(statusTotals)
+    .map(([label, value]) => ({ label, value: countValue(value) ?? 0 }))
+    .filter((item) => item.value > 0);
+  const statusTotal = statusData.reduce((sum, item) => sum + item.value, 0);
   const programById = new Map(
     summaryPrograms.map((item) => [item.programme_id, item]),
   );
@@ -156,7 +162,7 @@ export function InstitutionDashboard({
     <div className="dashboard-page">
       <header className="page-heading dashboard-heading">
         <div>
-          <p className="eyebrow">INSTITUTION WORKSPACE · SYNTHETIC DATA</p>
+          <p className="eyebrow">INSTITUTION WORKSPACE</p>
           <h1>Institution dashboard</h1>
           <h2 className="dashboard-institution-name">
             {institution.data?.name ?? "Your institution"}
@@ -269,13 +275,13 @@ export function InstitutionDashboard({
               }
             />
             <MetricCard
-              label="Demo ACTIVE enrolments"
+              label="Active enrolments"
               value={
                 coverageStatus === "NONE"
                   ? "No declaration"
                   : displayCount(counts?.demo_active_records)
               }
-              note="Prototype status accounting, not official policy"
+              note="Internal status accounting, not official policy"
             />
             <MetricCard
               label="Programme coverage"
@@ -283,7 +289,7 @@ export function InstitutionDashboard({
               note={`${coverageStatus === "NONE" ? "No current declarations" : prettyLabel(coverageStatus)} · missing is not zero`}
             />
             <MetricCard
-              label="Configured DEMO intake comparisons"
+              label="Configured intake comparisons"
               value={
                 coverageStatus === "NONE"
                   ? "Unavailable"
@@ -304,12 +310,18 @@ export function InstitutionDashboard({
                     Records by admission category
                   </h2>
                 </div>
-                <span className="status-badge neutral">DEMO accounting</span>
+                <span className="status-badge neutral">Local accounting</span>
               </header>
               <CategoryBars
                 categories={categoryData}
                 emptyLabel="No current declarations are available for this scope."
               />
+              {coverageStatus !== "NONE" && (
+                <>
+                  <h3 className="chart-subheading">Status breakdown</h3>
+                  <StatusDonut statuses={statusData} total={statusTotal} />
+                </>
+              )}
               {coverageStatus === "PARTIAL" && (
                 <p className="partial-note">
                   Totals include only programmes with an activated snapshot.
@@ -335,7 +347,7 @@ export function InstitutionDashboard({
                     <th scope="col">Programme code</th>
                     <th scope="col">Status</th>
                     <th scope="col">Declared</th>
-                    <th scope="col">Demo ACTIVE</th>
+                    <th scope="col">Active</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -386,15 +398,15 @@ export function InstitutionDashboard({
               <div>
                 <p className="eyebrow">CONFIGURED RULE COMPARISON</p>
                 <h2 id="intake-comparison-title">
-                  Category counts and DEMO intake
+                  Category counts and configured intake
                 </h2>
               </div>
               <span className="status-badge warning">
-                DEMO rules · not official determinations
+                Local rules · not official determinations
               </span>
             </header>
             {intake.isPending ? (
-              <Loading label="Loading configured DEMO intake rules…" />
+              <Loading label="Loading configured intake rules…" />
             ) : intake.isError ? (
               <ErrorPanel
                 error={intake.error}
@@ -409,13 +421,13 @@ export function InstitutionDashboard({
                 </p>
               </div>
             ) : (
-              <DashboardTable label="Current category records compared with configured DEMO intake">
+              <DashboardTable label="Current category records compared with configured intake">
                 <thead>
                   <tr>
                     <th scope="col">Programme</th>
                     <th scope="col">Category</th>
                     <th scope="col">Current declared</th>
-                    <th scope="col">Demo ACTIVE</th>
+                    <th scope="col">Active</th>
                     <th scope="col">Configured seats</th>
                     <th scope="col">Configured rule</th>
                   </tr>
@@ -460,7 +472,7 @@ export function InstitutionDashboard({
               </DashboardTable>
             )}
             <p className="data-note">
-              These comparisons show declared records against configured demo
+              These comparisons show declared records against configured
               capacities by programme and category. They do not establish an
               official AICTE violation.
             </p>
@@ -543,7 +555,7 @@ export function InstitutionDashboard({
         </>
       )}
       <p className="data-note">
-        All dashboard values come from the authenticated API and synthetic demo
+        All dashboard values come from the authenticated API and synthetic
         records. Historical uploads and unactivated candidates are excluded from
         current enrolment metrics.
       </p>

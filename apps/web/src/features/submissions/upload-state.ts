@@ -23,7 +23,7 @@ export function uploadError(error: unknown): {
     FILE_TOO_LARGE:
       "The file or multipart request exceeds the configured size limit. Select a smaller complete snapshot within the limit.",
     ROW_LIMIT_EXCEEDED:
-      "The CSV exceeds the configured data-record limit. It was not stored. Do not split one complete snapshot into separate candidates; this prototype needs a separately approved limit change for larger datasets.",
+      "The CSV exceeds the configured data-record limit. It was not stored. Do not split one complete snapshot into separate candidates; this platform needs a separately approved limit change for larger datasets.",
     INVALID_REQUEST:
       "The API rejected the upload context or file metadata. Check the programme, academic year and file selection.",
   };

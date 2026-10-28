@@ -16,11 +16,11 @@ const guidance: Record<string, { what: string; next: string }> = {
     next: "Check the programme in the source system and submit a corrected complete CSV if needed.",
   },
   INVALID_ADMISSION_CATEGORY: {
-    what: "The admission category is outside the supported prototype categories.",
-    next: "Confirm the category in the source record. Supported categories are illustrative demo configuration.",
+    what: "The admission category is outside the supported categories.",
+    next: "Confirm the category in the source record. Supported categories are illustrative configuration.",
   },
   INVALID_ENROLLMENT_STATUS: {
-    what: "The enrolment status is outside the supported prototype statuses.",
+    what: "The enrolment status is outside the supported statuses.",
     next: "Confirm the student's current status in the source system and correct the next CSV if needed.",
   },
   INVALID_ENROLLMENT_DATE: {
@@ -45,11 +45,11 @@ const guidance: Record<string, { what: string; next: string }> = {
   },
   INTAKE_EXCEEDED: {
     what: "The candidate count exceeds the configured capacity for this year and category.",
-    next: "Compare the candidate with the institution's configured DEMO intake rule. This is not an official AICTE violation.",
+    next: "Compare the candidate with the institution's configured intake rule. This is not an official AICTE violation.",
   },
   MISSING_INTAKE_RULE: {
-    what: "No configured demo capacity was available for this year and category.",
-    next: "Ask an administrator to review the demo intake configuration; no official capacity conclusion is implied.",
+    what: "No configured capacity was available for this year and category.",
+    next: "Ask an administrator to review the intake configuration; no official capacity conclusion is implied.",
   },
 };
 

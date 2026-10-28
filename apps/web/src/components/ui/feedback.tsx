@@ -38,11 +38,11 @@ export function ErrorPanel({
   );
 }
 
-export function DemoBanner() {
+export function DataNotice() {
   return (
-    <aside className="demo-banner" aria-label="Demo data notice">
+    <aside className="demo-banner" aria-label="Synthetic data notice">
       <span className="demo-dot" aria-hidden="true" />
-      DEMO — synthetic data only
+      Synthetic data only
       <span className="banner-detail">
         Local validation is not government identity verification.
       </span>

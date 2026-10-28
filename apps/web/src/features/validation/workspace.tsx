@@ -286,6 +286,31 @@ export function ValidationWorkspace({
       setAnnouncement("Masked feedback CSV downloaded.");
     },
   });
+  const [caseError, setCaseError] = useState("");
+  const openCase = useMutation({
+    mutationFn: (finding: Finding) => {
+      const recordIds = finding.record_version_id
+        ? [finding.record_version_id]
+        : Array.isArray(finding.evidence.affected_record_ids)
+          ? (finding.evidence.affected_record_ids as string[])
+          : [];
+      return request<{ id: string }>("/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: "POTENTIAL_DUPLICATE",
+          summary: finding.explanation,
+          record_version_ids: recordIds,
+        }),
+      });
+    },
+    retry: false,
+    onSuccess: (created) => {
+      setCaseError("");
+      router.push(`/cases/${created.id}`);
+    },
+    onError: (error) => setCaseError(errorMessage(error)),
+  });
 
   useEffect(() => {
     if (!query.run_id && runs.data?.data[0])
@@ -424,7 +449,7 @@ export function ValidationWorkspace({
     <div className="validation-page">
       <div className="page-heading heading-actions">
         <div>
-          <p className="eyebrow">SYNTHETIC DATA · IMMUTABLE CANDIDATE</p>
+          <p className="eyebrow">IMMUTABLE CANDIDATE RECORD</p>
           <h1>Student validation</h1>
           <p>
             {programme?.code ?? "Programme"} · {batch.academic_year} ·{" "}
@@ -650,14 +675,15 @@ export function ValidationWorkspace({
                 <small>Candidate rows · not current enrolment</small>
               </div>
               <div>
-                <span>Candidate demo ACTIVE rows</span>
+                <span>Candidate active rows</span>
                 <strong>
                   {numberValue(
                     selectedRun.data.summary.candidate_demo_active_records,
                   ) ?? "Unavailable"}
                 </strong>
                 <small>
-                  Candidate-only count under demo statuses; not current totals.
+                  Candidate-only count under configured statuses; not current
+                  totals.
                 </small>
               </div>
               <div>
@@ -952,6 +978,11 @@ export function ValidationWorkspace({
                 {filterError}
               </p>
             )}
+            {caseError && (
+              <p className="form-error" role="alert">
+                {caseError}
+              </p>
+            )}
             {findings.isPending ? (
               <Loading label="Loading evidence-linked findings…" />
             ) : findings.isError ? (
@@ -1007,6 +1038,22 @@ export function ValidationWorkspace({
                           )}
                         </p>
                       )}
+                      {officer &&
+                        finding.rule_code ===
+                          "POTENTIAL_CROSS_INSTITUTION_DUPLICATE" && (
+                          <button
+                            className="button secondary small"
+                            disabled={openCase.isPending}
+                            onClick={() => {
+                              setCaseError("");
+                              openCase.mutate(finding);
+                            }}
+                          >
+                            {openCase.isPending
+                              ? "Opening case…"
+                              : "Open case for this finding"}
+                          </button>
+                        )}
                       <div className="finding-explanation">
                         <h3>What went wrong</h3>
                         <p>{copy.what}</p>
@@ -1065,7 +1112,7 @@ export function ValidationWorkspace({
         </>
       )}
       <p className="data-note">
-        All candidate records and validation evidence are synthetic demo data.
+        All candidate records and validation evidence are synthetic data.
         Historical uploads and previous validation runs remain preserved. A
         finding does not edit or remove the source row.
       </p>

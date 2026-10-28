@@ -9,7 +9,8 @@ export function Icon({
     | "close"
     | "exit"
     | "history"
-    | "upload";
+    | "upload"
+    | "flag";
 }) {
   const paths = {
     building:
@@ -21,6 +22,7 @@ export function Icon({
     exit: "M10 4H4v16h6m4-12 4 4-4 4m-6-4h10",
     history: "M4 4v5h5M4.6 9a8 8 0 1 1-.4 7M12 7v5l3 2",
     upload: "M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6",
+    flag: "M6 21V4h12l-3 4 3 4H6",
   };
   return (
     <svg
