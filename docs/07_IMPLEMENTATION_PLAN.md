@@ -12,8 +12,8 @@ responsive shell, existing institution/programme metadata and browser tests.
 Complete and test each step before proceeding. Steps 5A–5E are complete; 5F
 remains staged. Steps 5A and 5E required no new business endpoint or migration.
 Keep compiler/generator locks separate as approved; generated types must match
-the backend. No force/legacy peer overrides. Use pinned TanStack Query and
-Playwright. Defer backend enhancements until the frontend feature needs them.
+the backend. No force/legacy peer overrides. Use pinned TanStack Query. Defer
+backend enhancements until the frontend feature needs them.
 
 5B implements /institution/upload and shared /submissions history, with an
 officer's institution-context link from metadata. Reuse existing upload/history

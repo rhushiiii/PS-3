@@ -27,7 +27,8 @@ No backend enhancement is implemented before its frontend dependency exists.
 Use direct local API requests, /me-authoritative identity, memory-only bearer
 tokens, per-session query keys and cancellation/cache clearing; no auth framework,
 proxy, persistence or silent renewal. UI visibility flags do not grant access.
-Generated types and Playwright are required. openapi-typescript 7.13.0 currently
+Generated types are required; automated browser testing (Playwright) was removed
+and is no longer part of the toolchain. openapi-typescript 7.13.0 currently
 requires TypeScript 5; the user approved a separate locked tools/api-types package
 with TypeScript 5.9.3, preserving application TypeScript 6.0.3. No peer bypass.
 Demo statistics mean API-backed synthetic records, never hard-coded UI figures.

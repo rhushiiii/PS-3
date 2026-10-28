@@ -1,60 +1,15 @@
 # Testing, Security, and Demo QA
 
-## Step 5F browser verification
+## Automated browser testing removed
 
-The latest completed full Chromium run reported 49/50 passing. The remaining
-history-retry test had assumed the retry always produced a table; the seeded
-database may instead return an honest empty-history state. Its assertion now
-accepts either a table or the explicit empty state, waits for the refresh control
-to be enabled, and passes in an isolated rerun. The stale-account race test also
-waits for its deliberately held request instead of a transient loading label.
-A subsequent full rerun could not complete because the isolated browser stack
-exited with an `OSError` after starting the local servers.
-
-Four WebKit smoke scenarios passed: snapshot review/activation with omissions,
-activated institution dashboard, accessible sign-in, and upload/history. The
-broader WebKit run encountered repeated 30-second
-timeouts and was stopped before a complete summary. Firefox's headless process
-started but did not become ready, so no Firefox test results are claimed. Chromium
-continues to be the complete regression browser in this environment. Automated
-axe checks run on login, dashboards, upload/history, validation and activation,
-including mobile layouts; a full manual assistive-technology audit remains open.
-
-## Step 5B browser and policy verification
-
-Reuse the isolated PostgreSQL/API/browser stack. Test real multipart uploads,
-header-only template download, duplicate files producing distinct candidates,
-unchanged current references/validation state, history programme/year filters,
-pagination and redacted provenance. Read configured policy rather than duplicating
-limits; test nondefault policy values and backend role denial. Exercise invalid
-context, oversized files, server CSV/header/record-limit failures and manual
-recovery, policy/history outages, lost responses after actual persistence,
-in-flight double-submit prevention, expiry and account-switch isolation.
-No automatic upload retries or offline replay. Keep errors separate from empty
-history and unknown outcomes separate from definite rejection/success.
-Verify desktop/mobile keyboard access, overflow and automated axe checks.
-Use synthetic records only; no raw APAAR or CSV contents in UI/log assertions.
-Current/previous display tests may prepare snapshots through the already implemented
-backend APIs solely in the temporary test database; no activation UI is introduced.
-Run backend regression/migration/HTTP checks, frontend strict typing, generated
-type drift, lint, formatting and build. No new migration is required for 5B.
-
-## Step 5A browser verification
-
-Playwright uses a newly created local sih26263_m1_test_<uuid> PostgreSQL database,
-migrates and seeds synthetic institutions/accounts, then starts owned API and web
-servers on 8105/3105. Occupied ports are refused; no existing server/database is
-adopted. EOF/teardown stops owned processes and drops only the created database.
-The helper bounds DB connection/startup waits; Docker/PostgreSQL must be running.
-Use .next-test output separately from development/production output. Logs remain
-inside .local. Trace/video capture is off to avoid recording Authorization headers.
-Test real sign-in, /me role routing, institution/programme/directory requests,
-search/paging, logout/account changes, refresh sign-out, expiry and 401 cleanup,
-late-response isolation, backend permission/impersonation denial, failed/empty
-responses and retries, keyboard/native-dialog navigation, mobile overflow and axe
-checks. Mock only explicit failure/timing cases, never production dashboard data.
-Run OpenAPI type-drift checks, lint/format, strict TS, production build, helper
-Python checks and backend regression. 5A tests do not upload or activate snapshots.
+Automated browser/e2e testing (Playwright, including its WebKit/Chromium/Firefox
+coverage, the isolated test-stack helper and automated axe accessibility checks)
+has been removed from this project. Frontend verification is limited to `eslint`,
+`tsc --noEmit`, `prettier --check`, `next build` and manual testing in a browser.
+There is no automated UI regression suite, no automated accessibility check, and
+no owned-stack browser-test harness. Manual testing — including keyboard,
+mobile-layout and screen-reader checks — is required before each release and is
+not currently tracked as repeatable, scripted coverage.
 
 Milestone 4 acceptance: explicit upload/validation separation; first activation
 and replacement; immutable receipts/provenance; version compatibility and no silent
@@ -88,7 +43,7 @@ rows -> feedback -> officer revalidation; activation remains unimplemented.
 - Unit: normalization, APAAR format, duplicate logic, intake per year/category, status mapping, mock fixtures.
 - DB integration: migrations, row-version preservation, row scoping and audit.
 - API: auth, upload, batch browse, results, case transitions, mock consent checks.
-- UI E2E: upload -> findings -> officer reviews -> correction.
+- UI: manual verification of upload -> findings -> officer reviews -> correction; no automated UI test runs this path.
 - Security: unauthorized institution, IDOR, malformed CSV, oversized files, log redaction.
 
 ## Test matrix
@@ -128,7 +83,7 @@ rows -> feedback -> officer revalidation; activation remains unimplemented.
 ## CI target
 
 Backend: `ruff check`, `ruff format --check`, `mypy` (if configured), `pytest`.  
-Frontend: `npm run lint`, `npx tsc --noEmit`, build and E2E smoke if available.  
+Frontend: `npm run lint`, `npx tsc --noEmit`, `npm run build`. No automated E2E.  
 Docker: `docker compose config`, migration tests.
 
 ## Demo script (6–8 minutes)

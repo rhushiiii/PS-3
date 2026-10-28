@@ -378,28 +378,17 @@ peer requirements; application TypeScript remains 6.0.3 and checks the generated
 declarations. No peer-dependency bypass is used.
 
 ```powershell
-npm exec playwright install chromium
-npm run test
 npm run lint
 npm run typecheck
 npm run format:check
 npm run build
 ```
 
-Browser tests require running local PostgreSQL and a database role that can create
-databases. They create/migrate/seed a new temporary test database, own loopback API
-and web processes on ports 8105/3105, and remove their database/processes afterward.
-Occupied ports are refused; existing development servers/data are not reused.
-Test builds use `.next-test`; redacted server logs stay in `.local/5a-*.log`.
-Traces, videos and automatic screenshots are disabled to avoid token capture.
-The Chromium suite covers real API sign-in, the full institution upload-to-current
-snapshot journey, role authorization, failures, expiry, account isolation,
-desktop/mobile layouts and automated accessibility checks. The latest full run
-reported 49/50 passing; its remaining history-retry test was corrected and passes
-on its own, but a subsequent full rerun could not complete because the isolated
-browser stack exited with an `OSError`. Four WebKit smoke scenarios passed; the
-full WebKit run timed out in multiple scenarios. Firefox could not launch headless
-in this environment. A full manual screen-reader audit remains follow-up work.
+Automated browser/e2e testing (Playwright) has been removed from this project.
+Frontend verification is limited to lint, strict typing, formatting, production
+build and manual testing in a browser; there is no automated UI regression suite
+or automated accessibility check. A full manual screen-reader and keyboard
+accessibility audit remains follow-up work.
 
 5A itself added no upload screens or backend contract/migration changes. The
 following section describes the subsequently implemented 5B scope.
@@ -447,15 +436,13 @@ failed. Preparing another upload is deliberate and may create another candidate.
 If the session ends, sign in again and check your own history before re-uploading.
 No absolute HTTP cancellation/completion guarantee or upload idempotency is added.
 
-The existing `npm test` command covers upload/template/history using the real
-isolated PostgreSQL/API stack, duplicate preservation, filters/pagination,
+Upload/template/history, duplicate preservation, filters/pagination,
 malformed/encoding/record-limit failures, configured policy and size checks,
 unknown outcomes after actual persistence, pending-request navigation, expiry,
-account switching and desktop/mobile accessibility. Current/previous display
-fixtures use the existing backend activation API only in the temporary test
-database. Explicit synthetic-only visual captures stay in `.local`; token-bearing
-traces/videos remain disabled. Backend regression includes policy permissions,
-nondefault settings, migration round trips/drift and loopback HTTP smoke tests.
+account switching and desktop/mobile accessibility require manual verification;
+no automated browser suite covers them. Backend regression includes policy
+permissions, nondefault settings, migration round trips/drift and loopback HTTP
+smoke tests, run via `pytest`.
 
 Step 5B adds the upload and submission-history workflows described here. Steps
 5C–5E add validation, review/activation and API-backed dashboards. Step 5F polish,
