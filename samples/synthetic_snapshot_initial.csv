@@ -1,0 +1,4 @@
+college_student_id,student_name,apaar_id,academic_year,programme_code,admission_category,enrollment_status,enrollment_date
+DEMO-001,Synthetic One,900000000001,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+DEMO-002,Synthetic Two,900000000002,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+DEMO-003,Synthetic Three,900000000003,2026-27,DEMO-COMP,NRI,ACTIVE,2026-08-01

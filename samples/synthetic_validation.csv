@@ -1,0 +1,7 @@
+college_student_id,student_name,apaar_id,academic_year,programme_code,admission_category,enrollment_status,enrollment_date
+DEMO-V1,Fictional Student One,900000000001,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+DEMO-V2,,malformed-demo-token,2026-27,DEMO-COMP,REGULAR,ACTIVE,not-a-date
+DEMO-V3,Fictional Student Three,,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-03
+DEMO-V4,Fictional Student Four,900000000004,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-04
+DEMO-V1,Fictional Student Five,900000000001,2026-27,DEMO-COMP,NRI,WITHDRAWN,2026-08-05
+DEMO-V6,Fictional Student Six,900000000006,2025-26,WRONG,UNKNOWN,UNKNOWN,2026-02-30

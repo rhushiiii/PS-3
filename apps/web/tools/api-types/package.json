@@ -1,0 +1,9 @@
+{
+  "name": "sih26263-api-types-tool",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}
