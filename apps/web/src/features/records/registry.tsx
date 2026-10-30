@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { QueryBoundary, FilterOptionsError } from "@/components/ui/feedback";
+import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import type { components } from "@/lib/api/generated";
 import {
@@ -14,9 +14,9 @@ import {
   type RecordRow,
   type ValidationStatus,
 } from "./shared";
+import { useInstitutionOptions } from "@/features/institutions/options";
 
 type RecordPage = components["schemas"]["Page_RecordRow_"];
-type InstitutionPage = components["schemas"]["Page_InstitutionResponse_"];
 type ProgrammePage = components["schemas"]["Page_ProgrammeResponse_"];
 
 type Filters = {
@@ -54,14 +54,10 @@ export function RecordRegistry() {
     ? filters.institution
     : (session?.user.institution_id ?? "");
 
-  const institutions = useQuery({
-    queryKey: [...scope, "institutions", "filter-options"],
-    enabled: !!session && officer,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...scope, "institutions", "filter-options"],
+    !!session && officer,
+  );
   const programmes = useQuery({
     queryKey: [...scope, "programmes", programmeInstitution],
     enabled: !!session && !!programmeInstitution,
@@ -228,95 +224,87 @@ export function RecordRegistry() {
             Clear filters
           </button>
           {(institutions.isError || programmes.isError) && (
-            <p className="form-error" role="alert">
-              Some filter options could not be loaded. Other filters still work.
-            </p>
+            <FilterOptionsError />
           )}
         </form>
         <p className="sr-only" role="status" aria-live="polite">
           {records.data ? `${records.data.pagination.total} records found` : ""}
         </p>
-        {records.isPending ? (
-          <Loading label="Loading records…" />
-        ) : records.isError ? (
-          <ErrorPanel
-            error={records.error}
-            retry={() => void records.refetch()}
-          />
-        ) : records.data.data.length === 0 ? (
-          <div className="empty-state">
-            {hasFilters ? (
-              <>
-                <h3>No records match these filters</h3>
-                <p>Try removing a filter or clear all filters.</p>
-              </>
+        <QueryBoundary query={records} loading="Loading records…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                {hasFilters ? (
+                  <>
+                    <h3>No records match these filters</h3>
+                    <p>Try removing a filter or clear all filters.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>No records yet</h3>
+                    <p>
+                      Records appear here once a submission has been received
+                      and its rows processed.
+                    </p>
+                  </>
+                )}
+              </div>
             ) : (
-              <>
-                <h3>No records yet</h3>
-                <p>
-                  Records appear here once a submission has been received and
-                  its rows processed.
-                </p>
-              </>
-            )}
-          </div>
-        ) : (
-          <div
-            className="table-scroll"
-            tabIndex={0}
-            role="region"
-            aria-label="Student records"
-          >
-            <table className="review-table">
-              <caption>Student records · SIMULATED / DEMO DATA</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Student</th>
-                  <th scope="col">Masked APAAR</th>
-                  {officer && <th scope="col">Institution</th>}
-                  <th scope="col">Programme</th>
-                  <th scope="col">Year</th>
-                  <th scope="col">Enrollment</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.data.data.map((row: RecordRow) => (
-                  <tr key={row.record_version_id}>
-                    <th scope="row">
-                      <Link href={`/records/${row.record_version_id}`}>
-                        {row.student_name}
-                      </Link>
-                      <span className="cell-note">
-                        {row.college_student_id}
-                      </span>
-                    </th>
-                    <td>{row.masked_apaar}</td>
-                    {officer && <td>{row.institution_name}</td>}
-                    <td>{row.programme_name}</td>
-                    <td>{row.academic_year}</td>
-                    <td>{row.enrollment_status}</td>
-                    <td>
-                      <StatusBadges
-                        snapshot={row.snapshot_state}
-                        validation={row.validation_status}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {records.data && (
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={records.data.pagination.total}
-            busy={records.isFetching}
-            change={setPage}
-          />
-        )}
+              <div
+                className="table-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label="Student records"
+              >
+                <table className="review-table">
+                  <caption>Student records · SIMULATED / DEMO DATA</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Student</th>
+                      <th scope="col">Masked APAAR</th>
+                      {officer && <th scope="col">Institution</th>}
+                      <th scope="col">Programme</th>
+                      <th scope="col">Year</th>
+                      <th scope="col">Enrollment</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.data.map((row: RecordRow) => (
+                      <tr key={row.record_version_id}>
+                        <th scope="row">
+                          <Link href={`/records/${row.record_version_id}`}>
+                            {row.student_name}
+                          </Link>
+                          <span className="cell-note">
+                            {row.college_student_id}
+                          </span>
+                        </th>
+                        <td>{row.masked_apaar}</td>
+                        {officer && <td>{row.institution_name}</td>}
+                        <td>{row.programme_name}</td>
+                        <td>{row.academic_year}</td>
+                        <td>{row.enrollment_status}</td>
+                        <td>
+                          <StatusBadges
+                            snapshot={row.snapshot_state}
+                            validation={row.validation_status}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        </QueryBoundary>
+        <QueryPagination
+          query={records}
+          page={page}
+          pageSize={PAGE_SIZE}
+          change={setPage}
+        />
       </section>
       <p className="data-note">
         Search matches college student ID or name only; APAAR values are never

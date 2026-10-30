@@ -1,8 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { DemoBanner } from "@/components/ui/feedback";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { humanize } from "@/lib/format";
 
 export type Category = components["schemas"]["AdmissionCategory"];
 export const CATEGORIES: Category[] = [
@@ -14,12 +16,7 @@ export const CATEGORIES: Category[] = [
 ];
 export const DEFAULT_YEAR = "2026-27";
 
-export function categoryLabel(value: string): string {
-  return value
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/^\w/, (c) => c.toUpperCase());
-}
+export const categoryLabel = humanize;
 
 /** Plain-language message for intake mutations; never exposes raw server text. */
 export function intakeMessage(error: unknown): string {
@@ -37,14 +34,10 @@ export function intakeMessage(error: unknown): string {
 /** DEMO labelling: intake values are illustrative, never official AICTE values. */
 export function DemoRuleNotice() {
   return (
-    <aside className="demo-banner" aria-label="Demo intake rules notice">
-      <span className="demo-dot" aria-hidden="true" />
-      DEMO intake rules
-      <span className="banner-detail">
-        Illustrative values, not official AICTE determinations. Flags are review
-        signals, not fraud findings; officers decide.
-      </span>
-    </aside>
+    <DemoBanner label="Demo intake rules notice" title="DEMO intake rules">
+      Illustrative values, not official AICTE determinations. Flags are review
+      signals, not fraud findings; officers decide.
+    </DemoBanner>
   );
 }
 

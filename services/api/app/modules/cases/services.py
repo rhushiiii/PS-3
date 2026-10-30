@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, exists, func, not_, select
+from sqlalchemy import and_, exists, not_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError
+from app.core.http import APIError, not_found
+from app.core.pagination import count_rows, window
 from app.modules.audit.services import record_action
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.cases.models import (
     CLOSED_STATUSES,
@@ -98,19 +100,18 @@ def require_case_role(user: User, *, writing: bool = False) -> None:
         if writing
         else {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER}
     )
-    if user.role not in allowed:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, allowed)
 
 
 def scoped_case(session: Session, user: User, case_id: UUID) -> ReviewCase:
     require_case_role(user)
     case = session.get(ReviewCase, case_id)
     if case is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     if user.role == Role.INSTITUTION_ADMIN and case.institution_id != (
         user.institution_id
     ):
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return case
 
 
@@ -193,7 +194,7 @@ def open_case(
         )
     )
     if len(records) != len(unique_ids):
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     institution_ids = {record.institution_id for record in records}
     if len(institution_ids) != 1:
         raise APIError(
@@ -355,8 +356,7 @@ def notify_for_action(
 
 
 def list_assignees(session: Session, user: User) -> list[AssigneeResponse]:
-    if user.role != Role.AICTE_OFFICER:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, {Role.AICTE_OFFICER})
     # Emails are deliberately not exposed; fall back to a short opaque label.
     return [
         AssigneeResponse(
@@ -413,20 +413,9 @@ def list_cases(
         statement = statement.where(
             ReviewCase.opened_at <= now - timedelta(days=filters.min_age_days)
         )
-    total = (
-        session.scalar(
-            select(func.count()).select_from(statement.order_by(None).subquery())
-        )
-        or 0
-    )
-    items = list(
-        session.scalars(
-            statement.order_by(ReviewCase.opened_at.desc(), ReviewCase.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    )
-    return items, total
+    total = count_rows(session, statement)
+    ordered = statement.order_by(ReviewCase.opened_at.desc(), ReviewCase.id.desc())
+    return list(session.scalars(window(ordered, page, page_size))), total
 
 
 def record_correction_received(session: Session, batch: SubmissionBatch) -> None:

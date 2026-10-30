@@ -18,8 +18,9 @@ from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.core.http import APIError
+from app.core.http import not_found
 from app.core.pagination import Page, paginate
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.cases.models import CLOSED_STATUSES, ReviewCase
 from app.modules.institutions.models import Institution
@@ -40,8 +41,7 @@ OVERDUE_BATCH_LIMIT = 200
 
 def require_notification_role(user: User) -> None:
     # Same audience as cases; managers have no case notifications.
-    if user.role not in {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER}:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER})
 
 
 def active_user_ids(
@@ -164,7 +164,7 @@ def mark_read(
     require_notification_role(user)
     notification = session.get(Notification, notification_id)
     if notification is None or notification.recipient_user_id != user.id:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     if notification.read_at is None:
         notification.read_at = datetime.now(UTC)
     result = NotificationResponse.model_validate(notification)

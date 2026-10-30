@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import {
+  ErrorPanel,
+  Loading,
+  DemoBanner,
+  QueryBoundary,
+} from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { ScrollTable } from "@/features/intake/shared";
@@ -58,11 +63,9 @@ const title = (value: string) => value.charAt(0) + value.slice(1).toLowerCase();
 
 export function Disclaimer({ text }: { text: string }) {
   return (
-    <aside className="demo-banner" aria-label="Review prompt disclaimer">
-      <span className="demo-dot" aria-hidden="true" />
-      Review prompts only
-      <span className="banner-detail">{text}</span>
-    </aside>
+    <DemoBanner label="Review prompt disclaimer" title="Review prompts only">
+      {text}
+    </DemoBanner>
   );
 }
 
@@ -279,52 +282,52 @@ function DecisionHistory({ institutionId }: { institutionId: string }) {
   return (
     <div className="panel-padding">
       <h3>Decision history</h3>
-      {list.isPending ? (
-        <Loading label="Loading decisions…" />
-      ) : list.isError ? (
-        <ErrorPanel error={list.error} retry={() => void list.refetch()} />
-      ) : list.data.data.length === 0 ? (
-        <div className="empty-state compact">
-          <p>No decisions recorded yet.</p>
-        </div>
-      ) : (
-        <>
-          <ScrollTable label="Integrity signal decisions, newest first">
-            <thead>
-              <tr>
-                <th scope="col">Recorded</th>
-                <th scope="col">Signal</th>
-                <th scope="col">Decision</th>
-                <th scope="col">Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.data.map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    <time dateTime={d.created_at}>
-                      {new Date(d.created_at).toLocaleString()}
-                    </time>
-                  </td>
-                  <td>
-                    <span className="code-label">{d.signal_key}</span>
-                  </td>
-                  <td>{decisionLabel(d.decision)}</td>
-                  <td>{d.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </ScrollTable>
-          <Pagination
-            page={page}
-            pageSize={10}
-            total={list.data.pagination.total}
-            busy={list.isFetching}
-            change={setPage}
-            label="Decision history pagination"
-          />
-        </>
-      )}
+      <QueryBoundary query={list} loading="Loading decisions…">
+        {(data) =>
+          data.data.length === 0 ? (
+            <div className="empty-state compact">
+              <p>No decisions recorded yet.</p>
+            </div>
+          ) : (
+            <>
+              <ScrollTable label="Integrity signal decisions, newest first">
+                <thead>
+                  <tr>
+                    <th scope="col">Recorded</th>
+                    <th scope="col">Signal</th>
+                    <th scope="col">Decision</th>
+                    <th scope="col">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.data.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        <time dateTime={d.created_at}>
+                          {new Date(d.created_at).toLocaleString()}
+                        </time>
+                      </td>
+                      <td>
+                        <span className="code-label">{d.signal_key}</span>
+                      </td>
+                      <td>{decisionLabel(d.decision)}</td>
+                      <td>{d.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ScrollTable>
+              <Pagination
+                page={page}
+                pageSize={10}
+                total={data.pagination.total}
+                busy={list.isFetching}
+                change={setPage}
+                label="Decision history pagination"
+              />
+            </>
+          )
+        }
+      </QueryBoundary>
     </div>
   );
 }

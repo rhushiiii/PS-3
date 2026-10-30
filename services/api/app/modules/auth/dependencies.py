@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
@@ -38,10 +39,13 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def require_metadata_role(user: User) -> None:
-    if user.role not in {
-        Role.INSTITUTION_ADMIN,
-        Role.AICTE_OFFICER,
-        Role.AICTE_MANAGER,
-    }:
+def require_roles(user: User, allowed: Collection[Role]) -> None:
+    """Raise the shared 403 unless the user's role is in `allowed`."""
+    if user.role not in allowed:
         raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+
+
+def require_metadata_role(user: User) -> None:
+    require_roles(
+        user, {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER, Role.AICTE_MANAGER}
+    )

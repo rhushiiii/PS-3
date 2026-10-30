@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from conftest import pin_clock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -20,7 +21,6 @@ from test_validation import activate_demo, upload
 
 from app.modules.auth.models import User
 from app.modules.cases.models import ReviewCase
-from app.modules.integrity.routes import utc_now
 from app.modules.submissions.models import SubmissionBatch
 from app.seed import seed_id
 
@@ -67,10 +67,6 @@ def summary(client: TestClient, headers: dict[str, str], institution: UUID) -> A
     )
     assert response.status_code == 200, response.text
     return response.json()
-
-
-def pin_clock(application: FastAPI, moment: datetime) -> None:
-    application.dependency_overrides[utc_now] = lambda: moment
 
 
 def programme_row(body: dict[str, Any], programme: UUID) -> dict[str, Any]:

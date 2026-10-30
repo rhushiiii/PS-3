@@ -8,8 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.core.http import APIError
+from app.core.http import APIError, not_found
+from app.core.idempotency import check_fingerprint
 from app.modules.audit.services import record_action
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.institutions.models import Programme
 from app.modules.institutions.services import scoped_institution, scoped_programme
@@ -76,8 +78,7 @@ def require_submission_role(user: User, *, uploading: bool = False) -> None:
         if uploading
         else {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER}
     )
-    if user.role not in allowed:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, allowed)
 
 
 def upload_scope(session: Session, user: User, context: UploadContext) -> None:
@@ -113,12 +114,11 @@ def idempotent_replay(
     )
     if batch is None:
         return None
-    if batch.idempotency_fingerprint != fingerprint:
-        raise APIError(
-            409,
-            "IDEMPOTENCY_KEY_REUSED",
-            "Idempotency key used with a different upload",
-        )
+    check_fingerprint(
+        batch.idempotency_fingerprint,
+        fingerprint,
+        "Idempotency key used with a different upload",
+    )
     # Only batches received no later than the original count, so the body is stable.
     earlier = session.scalar(
         select(SubmissionBatch.id)
@@ -250,7 +250,7 @@ def scoped_batch(session: Session, user: User, batch_id: UUID) -> SubmissionBatc
         )
     batch = session.scalar(statement)
     if batch is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return batch
 
 

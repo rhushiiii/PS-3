@@ -2,15 +2,15 @@
 
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { QueryBoundary, FilterOptionsError } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { DashboardTable, prettyLabel } from "@/features/dashboards/components";
 import type { components } from "@/lib/api/generated";
+import { useInstitutionOptions } from "@/features/institutions/options";
 
 type AuditPage = components["schemas"]["Page_AuditEventResponse_"];
 type Actions = components["schemas"]["AuditActionsResponse"];
-type InstitutionPage = components["schemas"]["Page_InstitutionResponse_"];
 
 type Filters = {
   action: string;
@@ -57,14 +57,10 @@ export function AuditExplorer() {
     enabled: !!session,
     queryFn: ({ signal }) => request<Actions>("/audit/actions", { signal }),
   });
-  const institutions = useQuery({
-    queryKey: [...scope, "institutions"],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...scope, "institutions"],
+    !!session,
+  );
   const institutionNames = new Map(
     (institutions.data?.data ?? []).map((i) => [i.id, i.name]),
   );
@@ -218,125 +214,120 @@ export function AuditExplorer() {
             {error}
           </p>
         )}
-        {(actions.isError || institutions.isError) && (
-          <p className="form-error" role="alert">
-            Some filter options could not be loaded. Other filters still work.
-          </p>
-        )}
+        {(actions.isError || institutions.isError) && <FilterOptionsError />}
       </section>
 
       <section className="panel" aria-label="Audit events">
         <p className="sr-only" role="status" aria-live="polite">
           {events.data ? `${events.data.pagination.total} events found` : ""}
         </p>
-        {events.isPending ? (
-          <Loading label="Loading audit events…" />
-        ) : events.isError ? (
-          <ErrorPanel
-            error={events.error}
-            retry={() => void events.refetch()}
-          />
-        ) : events.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No audit events</h3>
-            <p>No events match these filters.</p>
-          </div>
-        ) : (
-          <DashboardTable label="Audit events table">
-            <caption className="sr-only">
-              Audit events, newest first. Use Details to view redacted event
-              details.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Time</th>
-                <th scope="col">Action</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Entity</th>
-                <th scope="col">Institution</th>
-                <th scope="col">
-                  <span className="sr-only">Details</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.data.data.map((event) => {
-                const open = expanded === event.id;
-                const entries = Object.entries(event.details);
-                return (
-                  <Fragment key={event.id}>
-                    <tr>
-                      <td>
-                        <time dateTime={event.occurred_at}>
-                          {new Date(event.occurred_at).toLocaleString()}
-                        </time>
-                      </td>
-                      <td>{event.action}</td>
-                      <td>
-                        {event.actor ? (
-                          <>
-                            {event.actor.display_name}
-                            <small>
-                              {" "}
-                              {event.actor.role
-                                ? prettyLabel(event.actor.role)
-                                : "No role"}
-                            </small>
-                          </>
-                        ) : (
-                          "System"
+        <QueryBoundary query={events} loading="Loading audit events…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                <h3>No audit events</h3>
+                <p>No events match these filters.</p>
+              </div>
+            ) : (
+              <DashboardTable label="Audit events table">
+                <caption className="sr-only">
+                  Audit events, newest first. Use Details to view redacted event
+                  details.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Actor</th>
+                    <th scope="col">Entity</th>
+                    <th scope="col">Institution</th>
+                    <th scope="col">
+                      <span className="sr-only">Details</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.data.map((event) => {
+                    const open = expanded === event.id;
+                    const entries = Object.entries(event.details);
+                    return (
+                      <Fragment key={event.id}>
+                        <tr>
+                          <td>
+                            <time dateTime={event.occurred_at}>
+                              {new Date(event.occurred_at).toLocaleString()}
+                            </time>
+                          </td>
+                          <td>{event.action}</td>
+                          <td>
+                            {event.actor ? (
+                              <>
+                                {event.actor.display_name}
+                                <small>
+                                  {" "}
+                                  {event.actor.role
+                                    ? prettyLabel(event.actor.role)
+                                    : "No role"}
+                                </small>
+                              </>
+                            ) : (
+                              "System"
+                            )}
+                          </td>
+                          <td>
+                            {prettyLabel(event.entity_type)}
+                            <small> {event.entity_id}</small>
+                          </td>
+                          <td>
+                            {event.institution_id
+                              ? (institutionNames.get(event.institution_id) ??
+                                event.institution_id)
+                              : "—"}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="button secondary small"
+                              aria-expanded={open}
+                              aria-controls={`audit-detail-${event.id}`}
+                              onClick={() =>
+                                setExpanded(open ? null : event.id)
+                              }
+                            >
+                              {open ? "Hide details" : "Details"}
+                            </button>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr id={`audit-detail-${event.id}`}>
+                            <td colSpan={6}>
+                              <p className="data-note">
+                                Redacted details. APAAR numbers and tokens are
+                                never shown.
+                              </p>
+                              {entries.length === 0 ? (
+                                <p>No additional details were recorded.</p>
+                              ) : (
+                                <dl className="kv-list">
+                                  {entries.map(([key, value]) => (
+                                    <Fragment key={key}>
+                                      <dt>{key}</dt>
+                                      <dd>{show(value)}</dd>
+                                    </Fragment>
+                                  ))}
+                                </dl>
+                              )}
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td>
-                        {prettyLabel(event.entity_type)}
-                        <small> {event.entity_id}</small>
-                      </td>
-                      <td>
-                        {event.institution_id
-                          ? (institutionNames.get(event.institution_id) ??
-                            event.institution_id)
-                          : "—"}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button secondary small"
-                          aria-expanded={open}
-                          aria-controls={`audit-detail-${event.id}`}
-                          onClick={() => setExpanded(open ? null : event.id)}
-                        >
-                          {open ? "Hide details" : "Details"}
-                        </button>
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr id={`audit-detail-${event.id}`}>
-                        <td colSpan={6}>
-                          <p className="data-note">
-                            Redacted details. APAAR numbers and tokens are never
-                            shown.
-                          </p>
-                          {entries.length === 0 ? (
-                            <p>No additional details were recorded.</p>
-                          ) : (
-                            <dl className="kv-list">
-                              {entries.map(([key, value]) => (
-                                <Fragment key={key}>
-                                  <dt>{key}</dt>
-                                  <dd>{show(value)}</dd>
-                                </Fragment>
-                              ))}
-                            </dl>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </DashboardTable>
-        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </DashboardTable>
+            )
+          }
+        </QueryBoundary>
         {events.data && events.data.pagination.total > PAGE_SIZE && (
           <Pagination
             page={page}

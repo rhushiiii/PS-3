@@ -17,10 +17,11 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError
+from app.core.http import APIError, not_found
 from app.modules.analytics import services as analytics
 from app.modules.analytics.schemas import AnalyticsMeta, TrendRow, UtilisationRow
 from app.modules.audit.services import record_action, redact
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.cases.models import CLOSED_STATUSES, ReviewCase
 from app.modules.cases.services import case_flags
@@ -34,8 +35,9 @@ from app.modules.reports.schemas import (
     ReportTable,
 )
 from app.modules.submissions.models import ProcessingStatus, SubmissionBatch
-from app.modules.validation.models import ValidationFinding, ValidationRun
+from app.modules.validation.models import ValidationFinding
 from app.modules.validation.rules import CATEGORIES
+from app.modules.validation.services import selected_runs_bulk
 from app.modules.verification.models import ApaarVerification
 
 AGGREGATE_ROLES = {Role.AICTE_OFFICER, Role.AICTE_MANAGER, Role.INSTITUTION_ADMIN}
@@ -85,13 +87,12 @@ class ReportParams:
 
 def authorize(user: User, kind: str, params: ReportParams) -> ReportParams:
     """Role check, and institution forcing for institution admins."""
-    if user.role not in KIND_ROLES[kind]:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, KIND_ROLES[kind])
     if user.role != Role.INSTITUTION_ADMIN:
         return params
     requested = params.filters.institution_id
     if requested not in (None, user.institution_id):
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     forced = analytics.Filters(
         params.filters.academic_year,
         user.institution_id,
@@ -544,19 +545,7 @@ def validation_findings(
         batch_statement.add_columns(SubmissionBatch.academic_year)
     ).all()
     batch_info = {b: (pid, year) for b, pid, year in batch_rows}
-    run_by_batch = {
-        batch_id: run_id
-        for batch_id, run_id in session.execute(
-            select(ValidationRun.batch_id, ValidationRun.id)
-            .where(ValidationRun.batch_id.in_(list(batch_info)))
-            .order_by(
-                ValidationRun.batch_id,
-                ValidationRun.completed_at.desc(),
-                ValidationRun.id.desc(),
-            )
-            .ext(distinct_on(ValidationRun.batch_id))
-        )
-    }
+    run_by_batch = selected_runs_bulk(session, list(batch_info))
     run_owner = {run: batch_info[batch] for batch, run in run_by_batch.items()}
     counts: Counter[tuple[UUID, str, str, str, str]] = Counter()
     for run_id, rule, severity, classification, n in session.execute(

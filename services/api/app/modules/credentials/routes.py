@@ -1,12 +1,9 @@
-from datetime import datetime
-from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Request, Response
 
-from app.core.config import Settings
-from app.core.http import ErrorResponse
-from app.core.pagination import Page
+from app.core.http import ErrorResponse, Now, no_store, settings_of
+from app.core.pagination import Page, PageNumber, PageSize
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.credentials.schemas import (
@@ -23,11 +20,9 @@ from app.modules.credentials.services import (
     issue_credential,
     list_credentials,
     revoke_credential,
-    utc_now,
     verification_log,
     verify_credential,
 )
-from app.modules.submissions.routes import PageNumber, PageSize, no_store
 
 router = APIRouter(
     prefix="/api/v1/credentials",
@@ -36,11 +31,6 @@ router = APIRouter(
         code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)
     },
 )
-Now = Annotated[datetime, Depends(utc_now)]
-
-
-def settings_of(request: Request) -> Settings:
-    return cast(Settings, request.app.state.settings)
 
 
 @router.post(

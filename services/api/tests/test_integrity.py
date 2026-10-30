@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from conftest import pin_clock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
@@ -21,7 +22,6 @@ from app.modules.audit.models import AuditEvent
 from app.modules.auth.models import User
 from app.modules.cases.models import CaseEvent
 from app.modules.integrity.models import IntegrityDecision
-from app.modules.integrity.routes import utc_now
 from app.modules.submissions.models import StudentRecordVersion, SubmissionBatch
 from app.modules.submissions.parsing import HEADERS
 from app.modules.verification.models import ApaarVerification
@@ -372,10 +372,6 @@ def test_overdue_cases_and_escalation(
     case(-timedelta(days=8))
     found = only(signals_of(client, officer), "CMP_OVERDUE_CASES")
     assert found[0]["severity"] == "HIGH" and len(found[0]["evidence"]["case_ids"]) == 2
-
-
-def pin_clock(application: FastAPI, moment: datetime) -> None:
-    application.dependency_overrides[utc_now] = lambda: moment
 
 
 def activated_at(session: Session, batch: str) -> datetime:

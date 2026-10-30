@@ -9,10 +9,12 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
-from app.core.http import APIError
+from app.core.http import APIError, not_found
 from app.modules.audit.services import record_action
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.institutions.models import Institution, IntakeRule
 from app.modules.institutions.services import scoped_institution, scoped_programme
@@ -52,8 +54,7 @@ def intake_actor(
     allowed = {Role.AICTE_OFFICER} | (
         set() if officer_only else {Role.INSTITUTION_ADMIN}
     )
-    if user.role not in allowed:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, allowed)
     return scoped_institution(session, user, institution_id)
 
 
@@ -132,6 +133,30 @@ def latest_declaration(
     )
 
 
+def latest_declarations_bulk(
+    session: Session, programme_ids: list[UUID]
+) -> dict[tuple[UUID, str], int]:
+    # Same "latest wins" ordering as `latest_declaration`, in bulk.
+    rows = session.execute(
+        select(
+            IntakeDeclaration.programme_id,
+            IntakeDeclaration.academic_year,
+            IntakeDeclaration.declared_total,
+        )
+        .where(IntakeDeclaration.programme_id.in_(programme_ids))
+        .order_by(
+            IntakeDeclaration.programme_id,
+            IntakeDeclaration.academic_year,
+            IntakeDeclaration.created_at.desc(),
+            IntakeDeclaration.id.desc(),
+        )
+        .ext(
+            distinct_on(IntakeDeclaration.programme_id, IntakeDeclaration.academic_year)
+        )
+    )
+    return {(pid, year): total for pid, year, total in rows}
+
+
 def change_rule(
     session: Session,
     user: User,
@@ -150,7 +175,7 @@ def change_rule(
             .with_for_update()
         )
         if rule is None:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
         if rule.approved_seats == request.approved_seats:
             raise APIError(422, "NO_CHANGE", "Approved seats already have this value")
         change = IntakeRuleChange(
@@ -450,7 +475,7 @@ def scoped_assessment(
         )
     )
     if assessment is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return assessment
 
 

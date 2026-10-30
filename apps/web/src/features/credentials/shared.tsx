@@ -24,9 +24,7 @@ export const outcomeTone: Record<Outcome, string> = {
   UNAVAILABLE: "neutral",
 };
 
-export const when = (value: string) => (
-  <time dateTime={value}>{new Date(value).toLocaleString()}</time>
-);
+export { when } from "@/lib/format";
 
 export function credentialState(c: CredentialSummary): {
   label: string;

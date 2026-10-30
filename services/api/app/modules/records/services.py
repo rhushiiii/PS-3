@@ -5,8 +5,8 @@ from sqlalchemy import ColumnElement, and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError
-from app.core.pagination import Page, Pagination
+from app.core.http import not_found
+from app.core.pagination import Page, Pagination, count_rows, window
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
 from app.modules.cases.models import CaseRecord, ReviewCase
@@ -125,14 +125,14 @@ def list_records(
     require_submission_role(user)
     if user.role == Role.INSTITUTION_ADMIN:
         if institution_id is not None and institution_id != user.institution_id:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
         institution_id = user.institution_id
     if institution_id is not None:
         scoped_institution(session, user, institution_id)
         if programme_id is not None:
             scoped_programme(session, institution_id, programme_id)
     elif programme_id is not None and session.get(Programme, programme_id) is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
 
     # Superseded snapshots are never listed; candidates only when asked for.
     visible = SubmissionBatch.id == SubmissionScope.current_batch_id
@@ -169,8 +169,8 @@ def list_records(
         )
         statuses = latest_statuses(session, batch_ids)
         source = source.where(status_clause(validation_status, statuses))
-    total = session.scalar(select(func.count()).select_from(source.subquery())) or 0
-    page_rows = session.execute(
+    total = count_rows(session, source)
+    ordered = (
         source.with_only_columns(
             Record,
             SubmissionBatch,
@@ -185,9 +185,8 @@ def list_records(
             SubmissionBatch.received_at.desc(),
             Record.id,
         )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).all()
+    )
+    page_rows = session.execute(window(ordered, page, page_size)).all()
     statuses = latest_statuses(session, list({row[1].id for row in page_rows}))
     data = [
         to_row(

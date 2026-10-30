@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -7,13 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import ErrorResponse
+from app.core.http import ErrorResponse, Now
 from app.core.rate_limit import rate_limit
 from app.modules.analytics.services import Filters
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.cases.models import CasePriority, CaseSeverity
 from app.modules.institutions.schemas import AcademicYear
-from app.modules.integrity.routes import utc_now
 from app.modules.reports import renderers
 from app.modules.reports.schemas import ReportFormat, ReportKind
 from app.modules.reports.services import ReportParams, build_report, record_export
@@ -31,7 +29,6 @@ router = APIRouter(
     },
 )
 Reader = Annotated[Session, Depends(get_snapshot_session)]
-Now = Annotated[datetime, Depends(utc_now)]
 
 
 @router.get(

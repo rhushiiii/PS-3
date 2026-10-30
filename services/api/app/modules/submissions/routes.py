@@ -9,8 +9,9 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import APIError, ErrorResponse
-from app.core.pagination import Page, Pagination, paginate
+from app.core.http import APIError, ErrorResponse, no_store, not_found
+from app.core.idempotency import IDEMPOTENCY_KEY_PATTERN
+from app.core.pagination import Page, PageNumber, PageSize, paginate, paginate_list
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.auth.models import Role
@@ -66,7 +67,7 @@ router = APIRouter(
 IdempotencyKey = Annotated[
     str | None,
     Header(
-        pattern=r"^[A-Za-z0-9._:-]{8,128}$",
+        pattern=IDEMPOTENCY_KEY_PATTERN,
         description=(
             "Optional. Repeating a key with the same file and scope returns the "
             "original batch (HTTP 200, Idempotent-Replayed: true) without a new "
@@ -75,8 +76,6 @@ IdempotencyKey = Annotated[
         ),
     ),
 ]
-PageNumber = Annotated[int, Query(ge=1)]
-PageSize = Annotated[int, Query(ge=1, le=100)]
 SnapshotSession = Annotated[Session, Depends(get_snapshot_session)]
 ActivationSession = Annotated[Session, Depends(get_activation_session)]
 MULTIPART_SCHEMA = {
@@ -112,10 +111,6 @@ MULTIPART_SCHEMA = {
         },
     }
 }
-
-
-def no_store(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
 
 
 @router.get("/upload-policy", response_model=UploadPolicyResponse)
@@ -279,7 +274,7 @@ def history(
     require_submission_role(user)
     if user.role == Role.INSTITUTION_ADMIN:
         if institution_id is not None and institution_id != user.institution_id:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
         institution_id = user.institution_id
     if institution_id is not None:
         scoped_institution(session, user, institution_id)
@@ -288,7 +283,7 @@ def history(
     elif programme_id is not None:
         # Officer-only path: still validate the programme exists before filtering.
         if session.get(Programme, programme_id) is None:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
     statement = select(SubmissionBatch).order_by(
         SubmissionBatch.received_at.desc(), SubmissionBatch.id.desc()
     )
@@ -343,8 +338,9 @@ def rows(
         for record in records
         if status is None or statuses.get(record.id, "VALID") == status
     ]
+    window = paginate_list(selected, page, page_size)
     results = []
-    for record in selected[(page - 1) * page_size : page * page_size]:
+    for record in window.data:
         result = row_response(record)
         result.validation_status = statuses.get(record.id, "VALID") if run else None
         result.validation_run_id = run.id if run else None
@@ -352,5 +348,5 @@ def rows(
     no_store(response)
     return Page[RowResponse](
         data=results,
-        pagination=Pagination(page=page, page_size=page_size, total=len(selected)),
+        pagination=window.pagination,
     )

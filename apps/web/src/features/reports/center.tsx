@@ -2,14 +2,16 @@
 
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useSession, type Role } from "@/features/auth/session";
 import { prettyLabel } from "@/features/dashboards/components";
 import { validAcademicYear } from "@/features/submissions/data";
 import { ApiError, errorMessage } from "@/lib/api/client";
-import type { components } from "@/lib/api/generated";
+import {
+  useInstitutionOptions,
+  type InstitutionPage,
+} from "@/features/institutions/options";
 
-type InstitutionPage = components["schemas"]["Page_InstitutionResponse_"];
 type Format = "csv" | "xlsx" | "pdf";
 type Kind =
   | "enrolment-summary"
@@ -296,19 +298,15 @@ function ReportCard({
 }
 
 export function ReportCenter() {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const search = useSearchParams();
   const role = session?.user.role;
   const fixedInstitution = role === "INSTITUTION_ADMIN";
   const scope = ["private", session?.generation, session?.user.id, "reports"];
-  const institutions = useQuery({
-    queryKey: [...scope, "institutions"],
-    enabled: !!session && !fixedInstitution,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...scope, "institutions"],
+    !!session && !fixedInstitution,
+  );
   if (!role) return null;
   const list = institutions.data?.data ?? [];
   const regions = [...new Set(list.map((i) => i.region))].sort();

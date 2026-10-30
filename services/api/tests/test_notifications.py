@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,27 +12,6 @@ from app.modules.auth.models import Role, User
 from app.modules.notifications.models import Notification
 from app.modules.notifications.services import ensure_overdue_notifications
 from app.seed import seed_id
-
-
-@pytest.fixture
-def heads(
-    auth_headers: Callable[[str], dict[str, str]],
-) -> dict[str, dict[str, str]]:
-    return {
-        "admin": auth_headers("cedar_admin"),
-        "other_admin": auth_headers("maple_admin"),
-        "officer": auth_headers("demo_officer"),
-        "manager": auth_headers("demo_manager"),
-    }
-
-
-@pytest.fixture
-def ids(
-    client: TestClient,
-    heads: dict[str, dict[str, str]],
-    seeded_session: Session,
-) -> list[str]:
-    return record_ids(seeded_session, upload(client, heads["admin"]))
 
 
 def user_id(session: Session, alias: str) -> Any:

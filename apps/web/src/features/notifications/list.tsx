@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { QueryBoundary } from "@/components/ui/feedback";
+import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
@@ -106,83 +106,80 @@ export function NotificationList() {
             {error}
           </p>
         )}
-        {list.isPending ? (
-          <Loading label="Loading notifications…" />
-        ) : list.isError ? (
-          <ErrorPanel error={list.error} retry={() => void list.refetch()} />
-        ) : list.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>
-              {unreadOnly ? "No unread notifications" : "Nothing here yet"}
-            </h3>
-            <p>
-              {unreadOnly
-                ? "You are all caught up."
-                : "Notifications appear when a case is assigned, a correction is requested or a case is updated."}
-            </p>
-          </div>
-        ) : (
-          <ul className="institution-list" style={{ listStyle: "none" }}>
-            {list.data.data.map((item) => {
-              const unread = !item.read_at;
-              return (
-                <li
-                  key={item.id}
-                  className={`notification-item ${unread ? "unread" : ""}`}
-                >
-                  <span
-                    className={`unread-dot ${unread ? "" : "read"}`}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <h3>
-                      {item.title}
-                      <span className="sr-only">
-                        {unread ? " (unread)" : " (read)"}
-                      </span>
-                    </h3>
-                    <p>{item.body}</p>
-                    <p>
-                      <time dateTime={item.created_at}>
-                        {new Date(item.created_at).toLocaleString()}
-                      </time>
-                    </p>
-                  </div>
-                  <div className="notification-actions">
-                    {item.case_id && (
-                      <Link
-                        className="button secondary small"
-                        href={`/cases/${item.case_id}`}
-                      >
-                        View case
-                      </Link>
-                    )}
-                    {unread && (
-                      <button
-                        type="button"
-                        className="button secondary small"
-                        disabled={mark.isPending}
-                        onClick={() => mark.mutate(item.id)}
-                      >
-                        Mark as read
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {list.data && (
-          <Pagination
-            page={page}
-            pageSize={20}
-            total={list.data.pagination.total}
-            busy={list.isFetching}
-            change={setPage}
-            label="Notifications pagination"
-          />
-        )}
+        <QueryBoundary query={list} loading="Loading notifications…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                <h3>
+                  {unreadOnly ? "No unread notifications" : "Nothing here yet"}
+                </h3>
+                <p>
+                  {unreadOnly
+                    ? "You are all caught up."
+                    : "Notifications appear when a case is assigned, a correction is requested or a case is updated."}
+                </p>
+              </div>
+            ) : (
+              <ul className="institution-list" style={{ listStyle: "none" }}>
+                {data.data.map((item) => {
+                  const unread = !item.read_at;
+                  return (
+                    <li
+                      key={item.id}
+                      className={`notification-item ${unread ? "unread" : ""}`}
+                    >
+                      <span
+                        className={`unread-dot ${unread ? "" : "read"}`}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <h3>
+                          {item.title}
+                          <span className="sr-only">
+                            {unread ? " (unread)" : " (read)"}
+                          </span>
+                        </h3>
+                        <p>{item.body}</p>
+                        <p>
+                          <time dateTime={item.created_at}>
+                            {new Date(item.created_at).toLocaleString()}
+                          </time>
+                        </p>
+                      </div>
+                      <div className="notification-actions">
+                        {item.case_id && (
+                          <Link
+                            className="button secondary small"
+                            href={`/cases/${item.case_id}`}
+                          >
+                            View case
+                          </Link>
+                        )}
+                        {unread && (
+                          <button
+                            type="button"
+                            className="button secondary small"
+                            disabled={mark.isPending}
+                            onClick={() => mark.mutate(item.id)}
+                          >
+                            Mark as read
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )
+          }
+        </QueryBoundary>
+        <QueryPagination
+          query={list}
+          page={page}
+          pageSize={20}
+          change={setPage}
+          label="Notifications pagination"
+        />
       </section>
     </>
   );

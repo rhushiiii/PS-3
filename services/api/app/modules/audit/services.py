@@ -2,11 +2,11 @@ import re
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.core.http import APIError
-from app.core.pagination import Page, Pagination
+from app.core.http import not_found
+from app.core.pagination import Page, Pagination, count_rows, window
 from app.modules.audit.models import AuditEvent
 from app.modules.audit.schemas import AuditActor, AuditEventResponse, AuditFilters
 from app.modules.auth.models import Role, User
@@ -109,17 +109,9 @@ def list_events(
         statement = statement.where(AuditEvent.occurred_at >= filters.occurred_from)
     if filters.occurred_to is not None:
         statement = statement.where(AuditEvent.occurred_at <= filters.occurred_to)
-    total = (
-        session.scalar(
-            select(func.count()).select_from(statement.order_by(None).subquery())
-        )
-        or 0
-    )
-    rows = session.execute(
-        statement.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
+    total = count_rows(session, statement)
+    ordered = statement.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
+    rows = session.execute(window(ordered, page, page_size))
     return Page[AuditEventResponse](
         data=[to_event(e, r, a) for e, r, a in rows],
         pagination=Pagination(page=page, page_size=page_size, total=total),
@@ -129,7 +121,7 @@ def list_events(
 def get_event(session: Session, event_id: UUID) -> AuditEventResponse:
     row = session.execute(event_statement().where(AuditEvent.id == event_id)).first()
     if row is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return to_event(row[0], row[1], row[2])
 
 

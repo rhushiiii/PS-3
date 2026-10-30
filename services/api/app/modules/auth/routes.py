@@ -3,7 +3,7 @@ from typing import cast
 from fastapi import APIRouter, Request, Response
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse
+from app.core.http import ErrorResponse, no_store
 from app.core.rate_limit import rate_limit_by_ip
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.auth.schemas import CurrentUserResponse, DemoLogin, TokenResponse
@@ -38,7 +38,7 @@ demo_router = APIRouter(
 
 @router.get("/me", response_model=CurrentUserResponse)
 def me(user: CurrentUser, response: Response) -> CurrentUserResponse:
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return CurrentUserResponse.model_validate(user)
 
 
@@ -55,5 +55,5 @@ def demo_login(
     user = resolve_demo_user(session, body.demo_alias)
     verifier = DemoTokenVerifier(settings)
     token = issue_demo_session(session, user, verifier)
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return TokenResponse(access_token=token, expires_in=verifier.ttl_seconds)

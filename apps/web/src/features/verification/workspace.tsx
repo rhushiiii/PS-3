@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { QueryBoundary } from "@/components/ui/feedback";
 import { useSession } from "@/features/auth/session";
 import {
   RecordVerification,
   SIM_LABEL,
 } from "@/features/cases/record-verification";
 import type { components } from "@/lib/api/generated";
+import { useInstitutionOptions } from "@/features/institutions/options";
 
 type RecordPage = components["schemas"]["Page_RecordRow_"];
-type InstitutionPage = components["schemas"]["Page_InstitutionResponse_"];
 
 export function VerificationWorkspace() {
   const { session, request } = useSession();
@@ -21,14 +21,10 @@ export function VerificationWorkspace() {
   const [selected, setSelected] = useState<string | null>(null);
   const term = q.trim();
 
-  const institutions = useQuery({
-    queryKey: [...scope, "institutions", "filter-options"],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...scope, "institutions", "filter-options"],
+    !!session,
+  );
   const records = useQuery({
     queryKey: [...scope, "verification-search", term, institution],
     enabled: !!session && (!!term || !!institution),
@@ -100,38 +96,39 @@ export function VerificationWorkspace() {
             <h3>Search to begin</h3>
             <p>Enter a student ID or name, or choose an institution.</p>
           </div>
-        ) : records.isPending ? (
-          <Loading label="Searching records…" />
-        ) : records.isError ? (
-          <ErrorPanel
-            error={records.error}
-            retry={() => void records.refetch()}
-          />
-        ) : records.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No records match</h3>
-          </div>
         ) : (
-          <ul className="finding-list" aria-label="Search results">
-            {records.data.data.map((r) => (
-              <li key={r.record_version_id}>
-                <button
-                  type="button"
-                  className="button secondary small"
-                  aria-pressed={selected === r.record_version_id}
-                  onClick={() => setSelected(r.record_version_id)}
-                >
-                  {selected === r.record_version_id ? "Selected" : "Select"}
-                </button>{" "}
-                <strong>{r.student_name}</strong>{" "}
-                <span className="cell-note">
-                  {r.college_student_id} · {r.institution_name} ·{" "}
-                  {r.programme_name} · {r.academic_year} · {r.masked_apaar} ·{" "}
-                  {r.snapshot_state}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <QueryBoundary query={records} loading="Searching records…">
+            {(data) =>
+              data.data.length === 0 ? (
+                <div className="empty-state">
+                  <h3>No records match</h3>
+                </div>
+              ) : (
+                <ul className="finding-list" aria-label="Search results">
+                  {data.data.map((r) => (
+                    <li key={r.record_version_id}>
+                      <button
+                        type="button"
+                        className="button secondary small"
+                        aria-pressed={selected === r.record_version_id}
+                        onClick={() => setSelected(r.record_version_id)}
+                      >
+                        {selected === r.record_version_id
+                          ? "Selected"
+                          : "Select"}
+                      </button>{" "}
+                      <strong>{r.student_name}</strong>{" "}
+                      <span className="cell-note">
+                        {r.college_student_id} · {r.institution_name} ·{" "}
+                        {r.programme_name} · {r.academic_year} ·{" "}
+                        {r.masked_apaar} · {r.snapshot_state}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </QueryBoundary>
         )}
       </section>
       {selected && (

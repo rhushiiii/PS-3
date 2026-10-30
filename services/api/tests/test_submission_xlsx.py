@@ -10,9 +10,10 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from conftest import counts, truncate_all
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import Engine, func, select, text
+from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,6 @@ from app.modules.auth.models import User
 from app.modules.submissions.models import (
     StudentRecordVersion,
     SubmissionBatch,
-    SubmissionScope,
 )
 from app.modules.submissions.parsing import HEADERS, parse_csv, parse_xlsx
 from app.modules.submissions.schemas import UploadContext
@@ -46,14 +46,6 @@ def context_fields(institution: str = "cedar") -> dict[str, str]:
         "academic_year": "2026-27",
         "schema_version": "v1",
     }
-
-
-def counts(session: Session) -> tuple[int, int, int]:
-    values = tuple(
-        session.scalar(select(func.count()).select_from(model)) or 0
-        for model in (SubmissionScope, SubmissionBatch, StudentRecordVersion)
-    )
-    return values[0], values[1], values[2]
 
 
 def workbook_bytes(rows: list[list[Any]], headers: tuple[str, ...] = HEADERS) -> bytes:
@@ -391,19 +383,4 @@ def test_concurrent_identical_keyed_uploads_create_one_batch(
             )
             assert session.scalar(select(SubmissionBatch.idempotency_key)) == KEY
     finally:
-        with db_engine.begin() as connection:
-            connection.execute(
-                text(
-                    "TRUNCATE credential_verifications, credential_revocations, "
-                    "admission_credentials, integrity_decisions, "
-                    "intake_assessments, "
-                    "intake_declarations, "
-                    "intake_rule_changes, "
-                    "submission_reviews, apaar_verifications, "
-                    "notifications, case_events, case_records, review_cases, "
-                    "validation_findings, validation_runs, "
-                    "student_record_versions, submission_batches, "
-                    "submission_scopes, "
-                    "audit_events, users, intake_rules, programmes, institutions"
-                )
-            )
+        truncate_all(db_engine)

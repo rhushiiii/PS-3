@@ -14,13 +14,13 @@ import {
   MetricCard,
   prettyLabel,
 } from "@/features/dashboards/components";
+import { useInstitutionOptions } from "@/features/institutions/options";
 
 type Schemas = components["schemas"];
 type Trends = Schemas["TrendsResponse"];
 type Completeness = Schemas["CompletenessResponse"];
 type Utilisation = Schemas["UtilisationResponse"];
 type CasePerf = Schemas["CasePerformanceResponse"];
-type InstitutionPage = Schemas["Page_InstitutionResponse_"];
 type Common = {
   as_of: string;
   coverage: Schemas["CoverageCounts"];
@@ -166,14 +166,10 @@ export function AnalyticsExplorer() {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const scope = ["private", session?.generation, session?.user.id, "analytics"];
 
-  const institutions = useQuery({
-    queryKey: [...scope, "institutions"],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...scope, "institutions"],
+    !!session,
+  );
   const regions = [
     ...new Set((institutions.data?.data ?? []).map((i) => i.region)),
   ].sort();

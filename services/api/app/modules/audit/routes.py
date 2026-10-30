@@ -4,15 +4,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import AwareDatetime
 
-from app.core.http import APIError, ErrorResponse
-from app.core.pagination import Page
+from app.core.http import APIError, ErrorResponse, no_store
+from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.audit import services
 from app.modules.audit.schemas import (
     AuditActionsResponse,
     AuditEventResponse,
     AuditFilters,
 )
-from app.modules.auth.dependencies import CurrentUser, DatabaseSession
+from app.modules.auth.dependencies import CurrentUser, DatabaseSession, require_roles
 from app.modules.auth.models import Role, User
 
 router = APIRouter(
@@ -30,8 +30,7 @@ router = APIRouter(
 
 def audit_reader(user: CurrentUser) -> User:
     # Officers only: managers and institution admins see no audit trail here.
-    if user.role != Role.AICTE_OFFICER:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, {Role.AICTE_OFFICER})
     return user
 
 
@@ -50,12 +49,12 @@ def events(
     institution_id: UUID | None = None,
     occurred_from: Annotated[AwareDatetime | None, Query(alias="from")] = None,
     occurred_to: Annotated[AwareDatetime | None, Query(alias="to")] = None,
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    page: PageNumber = 1,
+    page_size: PageSize = 25,
 ) -> Page[AuditEventResponse]:
     if occurred_from and occurred_to and occurred_from > occurred_to:
         raise APIError(422, "INVALID_REQUEST", "from must not be after to")
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return services.list_events(
         session,
         AuditFilters(
@@ -75,7 +74,7 @@ def events(
 def actions(
     response: Response, _: Officer, session: DatabaseSession
 ) -> AuditActionsResponse:
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return AuditActionsResponse(data=services.list_actions(session))
 
 
@@ -83,5 +82,5 @@ def actions(
 def event(
     event_id: UUID, response: Response, _: Officer, session: DatabaseSession
 ) -> AuditEventResponse:
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return services.get_event(session, event_id)

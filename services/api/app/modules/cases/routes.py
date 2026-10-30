@@ -1,11 +1,10 @@
-from typing import Annotated, cast
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Query, Response
 
-from app.core.config import Settings
-from app.core.http import ErrorResponse
-from app.core.pagination import Page, Pagination
+from app.core.http import AppSettings, ErrorResponse, no_store
+from app.core.pagination import Page, PageNumber, PageSize, Pagination
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.cases.models import CasePriority, CaseSeverity, CaseStatus
@@ -24,7 +23,6 @@ from app.modules.cases.services import (
     open_case,
     scoped_case,
 )
-from app.modules.submissions.routes import PageNumber, PageSize, no_store
 
 router = APIRouter(
     prefix="/api/v1/cases",
@@ -33,13 +31,6 @@ router = APIRouter(
         code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)
     },
 )
-
-
-def get_settings(request: Request) -> Settings:
-    return cast(Settings, request.app.state.settings)
-
-
-AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(

@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/generated";
+import { humanize } from "@/lib/format";
 
 type Schemas = components["schemas"];
 export type CaseStatus = Schemas["CaseResponse"]["status"];
@@ -69,10 +70,7 @@ export function legalActions(
   return TERMINAL.includes(status) ? officer : [...officer, "UPDATED"];
 }
 
-export function titleCase(value: string): string {
-  const words = value.replaceAll("_", " ").toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
+export const titleCase = humanize;
 
 export function statusLabel(status: CaseStatus): string {
   return status.replaceAll("_", " ");

@@ -285,27 +285,6 @@ def case_in_status(
     return str(case_id)
 
 
-@pytest.fixture
-def heads(
-    auth_headers: Callable[[str], dict[str, str]],
-) -> dict[str, dict[str, str]]:
-    return {
-        "admin": auth_headers("cedar_admin"),
-        "other_admin": auth_headers("maple_admin"),
-        "officer": auth_headers("demo_officer"),
-        "manager": auth_headers("demo_manager"),
-    }
-
-
-@pytest.fixture
-def ids(
-    client: TestClient,
-    heads: dict[str, dict[str, str]],
-    seeded_session: Session,
-) -> list[str]:
-    return record_ids(seeded_session, upload(client, heads["admin"]))
-
-
 @pytest.mark.parametrize("status", list(ALLOWED))
 def test_transition_table(
     client: TestClient,

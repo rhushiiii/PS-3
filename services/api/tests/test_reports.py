@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+from conftest import pin_clock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
@@ -23,7 +24,6 @@ from test_analytics import (
     activate,
     add_case,
     get,
-    pin_clock,
 )
 from test_validation import csv_data, run_validation, upload
 from test_verification import one_record, verify
@@ -92,9 +92,12 @@ def number(value: str) -> int | None:
 def pdf_text(content: bytes) -> str:
     """Text of all (flate-compressed) page content streams."""
     out = []
-    for raw in re.findall(rb"stream\r?\n(.*?)\r?\nendstream", content, re.DOTALL):
+    # Capture up to "endstream" and let the decompressor ignore the trailing line
+    # break: a stream whose last byte is 0x0d would otherwise lose that byte to the
+    # separator and fail to decompress (the timestamp makes the bytes vary per run).
+    for raw in re.findall(rb"stream\r?\n(.*?)endstream", content, re.DOTALL):
         try:
-            out.append(zlib.decompress(raw).decode("latin-1"))
+            out.append(zlib.decompressobj().decompress(raw).decode("latin-1"))
         except zlib.error:
             continue
     return "\n".join(out)

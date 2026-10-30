@@ -2,14 +2,15 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError
-from app.core.pagination import Page, Pagination
+from app.core.http import APIError, not_found
+from app.core.pagination import Page, Pagination, count_rows, paginate, window
 from app.modules.audit.services import record_action
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.credentials.models import (
     AdmissionCredential,
@@ -40,20 +41,6 @@ from app.modules.submissions.models import StudentRecordVersion, SubmissionScope
 
 ISSUER_ROLES = {Role.AICTE_OFFICER, Role.INSTITUTION_ADMIN}
 VERIFIER_ROLES = {Role.AICTE_OFFICER, Role.AUTHORIZED_VERIFIER}
-
-
-def utc_now() -> datetime:
-    """Clock dependency; tests override it to control expiry."""
-    return datetime.now(UTC)
-
-
-def require_role(user: User, allowed: set[Role]) -> None:
-    if user.role not in allowed:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
-
-
-def not_found() -> APIError:
-    return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
 
 
 def in_scope(user: User, institution_id: UUID) -> bool:
@@ -98,7 +85,7 @@ def issue_credential(
     settings: Settings,
     now: datetime,
 ) -> IssueResponse:
-    require_role(user, ISSUER_ROLES)
+    require_roles(user, ISSUER_ROLES)
     record = session.get(StudentRecordVersion, record_version_id)
     if record is None or not in_scope(user, record.institution_id):
         raise not_found()
@@ -180,7 +167,7 @@ def issue_credential(
 def list_credentials(
     session: Session, user: User, page: int, page_size: int
 ) -> Page[CredentialSummary]:
-    require_role(user, ISSUER_ROLES)
+    require_roles(user, ISSUER_ROLES)
     statement = select(AdmissionCredential, CredentialRevocation.revoked_at).outerjoin(
         CredentialRevocation,
         CredentialRevocation.credential_id == AdmissionCredential.id,
@@ -189,24 +176,22 @@ def list_credentials(
         statement = statement.where(
             AdmissionCredential.institution_id == user.institution_id
         )
-    total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    rows = session.execute(
-        statement.order_by(
-            AdmissionCredential.issued_at.desc(), AdmissionCredential.id.desc()
-        )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    ordered = statement.order_by(
+        AdmissionCredential.issued_at.desc(), AdmissionCredential.id.desc()
     )
+    rows = session.execute(window(ordered, page, page_size))
     return Page[CredentialSummary](
         data=[summary(credential, revoked_at) for credential, revoked_at in rows],
-        pagination=Pagination(page=page, page_size=page_size, total=total),
+        pagination=Pagination(
+            page=page, page_size=page_size, total=count_rows(session, statement)
+        ),
     )
 
 
 def revoke_credential(
     session: Session, user: User, credential_id: UUID, reason: str
 ) -> RevocationResponse:
-    require_role(user, ISSUER_ROLES)
+    require_roles(user, ISSUER_ROLES)
     credential = session.get(AdmissionCredential, credential_id)
     if credential is None or not in_scope(user, credential.institution_id):
         raise not_found()
@@ -287,7 +272,7 @@ def verify_credential(
     settings: Settings,
     now: datetime,
 ) -> VerifyResponse:
-    require_role(user, VERIFIER_ROLES)
+    require_roles(user, VERIFIER_ROLES)
     outcome, credential_id, verified = assess_token(session, token, settings, now)
     # The log row never receives the token, only the outcome and declared purpose.
     log = CredentialVerification(
@@ -320,19 +305,16 @@ def verify_credential(
 def verification_log(
     session: Session, user: User, page: int, page_size: int
 ) -> Page[VerificationLogEntry]:
-    require_role(user, VERIFIER_ROLES)
+    require_roles(user, VERIFIER_ROLES)
     statement = select(CredentialVerification)
     if user.role == Role.AUTHORIZED_VERIFIER:
         statement = statement.where(CredentialVerification.verifier_user_id == user.id)
-    total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    rows = session.scalars(
+    return paginate(
+        session,
         statement.order_by(
             CredentialVerification.verified_at.desc(), CredentialVerification.id.desc()
-        )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    return Page[VerificationLogEntry](
-        data=[VerificationLogEntry.model_validate(row) for row in rows],
-        pagination=Pagination(page=page, page_size=page_size, total=total),
+        ),
+        VerificationLogEntry,
+        page,
+        page_size,
     )

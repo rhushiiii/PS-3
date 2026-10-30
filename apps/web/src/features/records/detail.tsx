@@ -7,11 +7,8 @@ import { useSession } from "@/features/auth/session";
 import { CaseBadges, statusLabel, statusTone } from "@/features/cases/shared";
 import { RecordCredentialCard } from "@/features/credentials/manage";
 import { isUUID } from "@/lib/api/client";
+import { when } from "@/lib/format";
 import { StatusBadges, snapshotLabel, type RecordDetail } from "./shared";
-
-const when = (value: string) => (
-  <time dateTime={value}>{new Date(value).toLocaleString()}</time>
-);
 
 const verificationText: Record<string, string> = {
   SIMULATED_MATCH: "Simulated match",

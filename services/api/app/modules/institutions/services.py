@@ -4,8 +4,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.http import APIError
+from app.core.http import not_found
 from app.core.pagination import paginate as paginate
+from app.core.pagination import paginate_list
 from app.modules.auth.dependencies import require_metadata_role
 from app.modules.auth.models import Role, User
 from app.modules.institutions.models import Institution, Programme
@@ -19,10 +20,10 @@ def scoped_institution(
 ) -> Institution:
     require_metadata_role(user)
     if user.role == Role.INSTITUTION_ADMIN and user.institution_id != institution_id:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     institution = session.get(Institution, institution_id)
     if institution is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return institution
 
 
@@ -35,7 +36,7 @@ def scoped_programme(
         )
     )
     if programme is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
 
 
 def current_summary(
@@ -48,7 +49,6 @@ def current_summary(
     page_size: int,
 ) -> "InstitutionSummary":
     # Counts belong to submissions; institution API owns only the scoped view.
-    from app.core.pagination import Pagination
     from app.modules.institutions.schemas import InstitutionSummary, ProgrammeSummary
     from app.modules.submissions.models import SubmissionScope
     from app.modules.submissions.services import batch_rows, snapshot_counts
@@ -90,6 +90,7 @@ def current_summary(
                 counts=snapshot_counts(records) if current else None,
             )
         )
+    window = paginate_list(items, page, page_size)
     return InstitutionSummary(
         institution_id=institution_id,
         academic_year=year,
@@ -103,6 +104,6 @@ def current_summary(
             if available == len(programmes)
             else "PARTIAL",
         },
-        data=items[(page - 1) * page_size : page * page_size],
-        pagination=Pagination(page=page, page_size=page_size, total=len(items)),
+        data=window.data,
+        pagination=window.pagination,
     )

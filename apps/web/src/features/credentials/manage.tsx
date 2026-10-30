@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { QueryBoundary } from "@/components/ui/feedback";
+import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
@@ -130,30 +130,27 @@ export function CredentialList() {
             <h2 id="cred-title">Credentials</h2>
           </div>
         </header>
-        {list.isPending ? (
-          <Loading label="Loading credentials…" />
-        ) : list.isError ? (
-          <ErrorPanel error={list.error} retry={() => void list.refetch()} />
-        ) : list.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No credentials issued</h3>
-            <p>
-              Open a current, active record in the{" "}
-              <Link href="/records">student registry</Link> to issue one.
-            </p>
-          </div>
-        ) : (
-          <CredentialTable items={list.data.data} showRecord />
-        )}
-        {list.data && (
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={list.data.pagination.total}
-            busy={list.isFetching}
-            change={setPage}
-          />
-        )}
+        <QueryBoundary query={list} loading="Loading credentials…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                <h3>No credentials issued</h3>
+                <p>
+                  Open a current, active record in the{" "}
+                  <Link href="/records">student registry</Link> to issue one.
+                </p>
+              </div>
+            ) : (
+              <CredentialTable items={data.data} showRecord />
+            )
+          }
+        </QueryBoundary>
+        <QueryPagination
+          query={list}
+          page={page}
+          pageSize={PAGE_SIZE}
+          change={setPage}
+        />
       </section>
     </>
   );
@@ -324,31 +321,31 @@ export function RecordCredentialCard({
           {message}
         </p>
       )}
-      {list.isPending ? (
-        <Loading label="Loading credentials…" />
-      ) : list.isError ? (
-        <ErrorPanel error={list.error} retry={() => void list.refetch()} />
-      ) : list.data.items.length === 0 ? (
-        <div className="empty-state">
-          <h3>No credentials issued for this record</h3>
-        </div>
-      ) : (
-        <>
-          <CredentialTable
-            items={list.data.items}
-            showRecord={false}
-            onRevoke={(c) => {
-              setMessage("");
-              setPending({ kind: "revoke", id: c.id });
-            }}
-          />
-          {list.data.truncated && (
-            <p className="data-note">
-              Showing credentials from the first 100 in your scope only.
-            </p>
-          )}
-        </>
-      )}
+      <QueryBoundary query={list} loading="Loading credentials…">
+        {(data) =>
+          data.items.length === 0 ? (
+            <div className="empty-state">
+              <h3>No credentials issued for this record</h3>
+            </div>
+          ) : (
+            <>
+              <CredentialTable
+                items={data.items}
+                showRecord={false}
+                onRevoke={(c) => {
+                  setMessage("");
+                  setPending({ kind: "revoke", id: c.id });
+                }}
+              />
+              {data.truncated && (
+                <p className="data-note">
+                  Showing credentials from the first 100 in your scope only.
+                </p>
+              )}
+            </>
+          )
+        }
+      </QueryBoundary>
       <ConfirmDialog
         open={pending !== null}
         title={

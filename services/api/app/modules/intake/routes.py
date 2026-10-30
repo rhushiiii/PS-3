@@ -5,8 +5,8 @@ from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
 from app.core.config import Settings
-from app.core.http import APIError, ErrorResponse
-from app.core.pagination import Page, paginate
+from app.core.http import ErrorResponse, no_store, not_found
+from app.core.pagination import Page, PageNumber, PageSize, paginate
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.institutions.models import IntakeRule
@@ -49,8 +49,6 @@ router = APIRouter(
         503: {"model": ErrorResponse},
     },
 )
-PageNumber = Annotated[int, Query(ge=1)]
-PageSize = Annotated[int, Query(ge=1, le=100)]
 
 
 def rule_version(request: Request) -> str:
@@ -96,7 +94,7 @@ def rule_changes(
     )
     if intake_rule_id is not None:
         statement = statement.where(IntakeRuleChange.intake_rule_id == intake_rule_id)
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return paginate(session, statement, RuleChangeResponse, page, page_size)
 
 
@@ -132,7 +130,7 @@ def latest(
         session, institution_id, programme_id, academic_year
     )
     if declaration is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return DeclarationResponse.model_validate(declaration)
 
 

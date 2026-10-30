@@ -1,6 +1,7 @@
 import os
 import re
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from unittest.mock import patch
 
 import psycopg
@@ -10,15 +11,21 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from psycopg import sql
 from pydantic import SecretStr
-from sqlalchemy import Engine
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from alembic import command
 from app.core.config import Settings
-from app.core.database import build_engine, get_session
+from app.core.database import Base, build_engine, get_session
+from app.core.http import utc_now
 from app.main import create_app
 from app.modules.submissions.activation import get_activation_session
+from app.modules.submissions.models import (
+    StudentRecordVersion,
+    SubmissionBatch,
+    SubmissionScope,
+)
 from app.modules.validation.services import get_validation_session
 from app.seed import seed_demo
 
@@ -155,3 +162,49 @@ def auth_headers(client: TestClient) -> Callable[[str], dict[str, str]]:
         return {"Authorization": "Bearer " + response.json()["access_token"]}
 
     return login
+
+
+def truncate_all(engine: Engine) -> None:
+    """Empty every application table of the dedicated test database."""
+    assert (engine.url.database or "").startswith("sih26263_m1_test_")
+    names = ", ".join(table.name for table in Base.metadata.sorted_tables)
+    with engine.begin() as connection:
+        connection.execute(text(f"TRUNCATE {names}"))
+
+
+@pytest.fixture
+def heads(
+    auth_headers: Callable[[str], dict[str, str]],
+) -> dict[str, dict[str, str]]:
+    return {
+        "admin": auth_headers("cedar_admin"),
+        "other_admin": auth_headers("maple_admin"),
+        "officer": auth_headers("demo_officer"),
+        "manager": auth_headers("demo_manager"),
+    }
+
+
+@pytest.fixture
+def ids(
+    client: TestClient,
+    heads: dict[str, dict[str, str]],
+    seeded_session: Session,
+) -> list[str]:
+    from test_cases import record_ids  # lazy: test modules import this file
+    from test_validation import upload
+
+    return record_ids(seeded_session, upload(client, heads["admin"]))
+
+
+def counts(session: Session) -> tuple[int, int, int]:
+    """Row counts of submission scopes, batches and record versions."""
+    values = tuple(
+        session.scalar(select(func.count()).select_from(model)) or 0
+        for model in (SubmissionScope, SubmissionBatch, StudentRecordVersion)
+    )
+    return values[0], values[1], values[2]
+
+
+def pin_clock(application: FastAPI, moment: datetime) -> None:
+    """Freeze the `utc_now` request dependency at `moment`."""
+    application.dependency_overrides[utc_now] = lambda: moment

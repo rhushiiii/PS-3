@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.http import APIError
-from app.core.pagination import Pagination
+from app.core.pagination import paginate_list
 from app.modules.audit.services import record_action
 from app.modules.auth.models import User
 from app.modules.cases.models import CaseEvent, CaseRecord, ReviewCase
@@ -750,13 +750,13 @@ def overview(
     items.sort(
         key=lambda i: (-i.score.total_points, i.institution_name, str(i.institution_id))
     )
-    start = (page - 1) * page_size
+    window = paginate_list(items, page, page_size)
     return OverviewResponse(
         generated_at=now,
         academic_year=academic_year,
         band=band,
-        data=items[start : start + page_size],
-        pagination=Pagination(page=page, page_size=page_size, total=len(items)),
+        data=window.data,
+        pagination=window.pagination,
     )
 
 

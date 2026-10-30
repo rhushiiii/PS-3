@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { Pagination, QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { IntakeAssessmentPanel } from "@/features/intake/assessment-panel";
 import { useSubmissionContext } from "@/features/submissions/data";
@@ -867,18 +867,15 @@ export function ValidationWorkspace({
                 </table>
               </div>
             )}
-            {rows.data && (
-              <Pagination
-                label="Student records pagination"
-                page={rowPageNumber}
-                pageSize={pageSize}
-                total={rows.data.pagination.total}
-                busy={rows.isFetching}
-                change={(next) =>
-                  navigate({ row_page: next === 1 ? undefined : String(next) })
-                }
-              />
-            )}
+            <QueryPagination
+              query={rows}
+              label="Student records pagination"
+              page={rowPageNumber}
+              pageSize={pageSize}
+              change={(next) =>
+                navigate({ row_page: next === 1 ? undefined : String(next) })
+              }
+            />
           </section>
 
           <section className="panel" aria-labelledby="findings-heading">
@@ -1100,20 +1097,17 @@ export function ValidationWorkspace({
                 })}
               </div>
             )}
-            {findings.data && (
-              <Pagination
-                label="Finding results pagination"
-                page={findingPageNumber}
-                pageSize={pageSize}
-                total={findings.data.pagination.total}
-                busy={findings.isFetching}
-                change={(next) =>
-                  navigate({
-                    finding_page: next === 1 ? undefined : String(next),
-                  })
-                }
-              />
-            )}
+            <QueryPagination
+              query={findings}
+              label="Finding results pagination"
+              page={findingPageNumber}
+              pageSize={pageSize}
+              change={(next) =>
+                navigate({
+                  finding_page: next === 1 ? undefined : String(next),
+                })
+              }
+            />
           </section>
         </>
       )}

@@ -11,8 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError
+from app.core.http import APIError, not_found
+from app.core.idempotency import check_fingerprint
 from app.modules.audit.services import record_action
+from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.submissions.models import StudentRecordVersion
 from app.modules.validation.rules import token_hash, valid_token
@@ -42,8 +44,7 @@ def require_verification_role(user: User, *, requesting: bool = False) -> None:
         if requesting
         else {Role.INSTITUTION_ADMIN, Role.AICTE_OFFICER}
     )
-    if user.role not in allowed:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
+    require_roles(user, allowed)
 
 
 def scoped_record(
@@ -52,11 +53,11 @@ def scoped_record(
     require_verification_role(user)
     record = session.get(StudentRecordVersion, record_version_id)
     if record is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     if user.role == Role.INSTITUTION_ADMIN and record.institution_id != (
         user.institution_id
     ):
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return record
 
 
@@ -160,19 +161,18 @@ def find_replay(
     )
     if existing is None:
         return None
-    if existing.request_fingerprint != fingerprint:
-        raise APIError(
-            409,
-            "IDEMPOTENCY_KEY_REUSED",
-            "Idempotency-Key was already used with a different request",
-        )
+    check_fingerprint(
+        existing.request_fingerprint,
+        fingerprint,
+        "Idempotency-Key was already used with a different request",
+    )
     return existing
 
 
 def check_retry(session: Session, record_id: UUID, retry_of: UUID) -> None:
     previous = session.get(ApaarVerification, retry_of)
     if previous is None or previous.record_version_id != record_id:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     if previous.status not in RETRYABLE:
         raise APIError(
             409,

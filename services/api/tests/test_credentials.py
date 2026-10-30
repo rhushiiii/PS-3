@@ -15,6 +15,7 @@ from test_validation import activate_demo, csv_data, upload
 
 from app.core.config import Settings
 from app.core.database import Base
+from app.core.http import utc_now
 from app.modules.audit.models import AuditEvent
 from app.modules.credentials import tokens
 from app.modules.credentials.models import (
@@ -22,7 +23,6 @@ from app.modules.credentials.models import (
     CredentialRevocation,
     CredentialVerification,
 )
-from app.modules.credentials.services import utc_now
 from app.modules.submissions.models import StudentRecordVersion
 
 SEED = bytes(range(32))

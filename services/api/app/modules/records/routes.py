@@ -3,14 +3,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from app.core.http import ErrorResponse
-from app.core.pagination import Page
+from app.core.http import AppSettings, ErrorResponse, no_store
+from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
-from app.modules.cases.routes import AppSettings
 from app.modules.institutions.schemas import AcademicYear
 from app.modules.records.schemas import RecordDetail, RecordRow
 from app.modules.records.services import list_records, record_detail
-from app.modules.submissions.routes import PageNumber, PageSize, no_store
 from app.modules.validation.rules import STATUSES
 from app.modules.validation.schemas import RecordStatus
 

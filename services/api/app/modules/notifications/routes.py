@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response
 
-from app.core.http import ErrorResponse
-from app.core.pagination import Page
+from app.core.http import ErrorResponse, no_store
+from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.notifications.schemas import (
     NotificationResponse,
@@ -16,7 +16,6 @@ from app.modules.notifications.services import (
     mark_read,
     unread_count,
 )
-from app.modules.submissions.routes import PageNumber, PageSize, no_store
 
 router = APIRouter(
     prefix="/api/v1/notifications",

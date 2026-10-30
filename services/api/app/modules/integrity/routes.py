@@ -1,14 +1,12 @@
-from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
-from app.core.config import Settings
-from app.core.http import APIError, ErrorResponse
-from app.core.pagination import Page, paginate
-from app.modules.auth.dependencies import CurrentUser, DatabaseSession
+from app.core.http import ErrorResponse, Now, no_store, settings_of
+from app.core.pagination import Page, PageNumber, PageSize, paginate
+from app.modules.auth.dependencies import CurrentUser, DatabaseSession, require_roles
 from app.modules.auth.models import Role
 from app.modules.institutions.schemas import AcademicYear
 from app.modules.intake.services import intake_actor
@@ -37,20 +35,6 @@ router = APIRouter(
         503: {"model": ErrorResponse},
     },
 )
-PageNumber = Annotated[int, Query(ge=1)]
-PageSize = Annotated[int, Query(ge=1, le=100)]
-
-
-def utc_now() -> datetime:
-    # A dependency so tests can pin the clock; production always uses real time.
-    return datetime.now(UTC)
-
-
-Now = Annotated[datetime, Depends(utc_now)]
-
-
-def settings_of(request: Request) -> Settings:
-    return cast(Settings, request.app.state.settings)
 
 
 @router.get("/overview", response_model=OverviewResponse)
@@ -65,9 +49,8 @@ def get_overview(
     page: PageNumber = 1,
     page_size: PageSize = 20,
 ) -> OverviewResponse:
-    if user.role not in {Role.AICTE_OFFICER, Role.AICTE_MANAGER}:
-        raise APIError(403, "FORBIDDEN_ROLE", "Not authorized")
-    response.headers["Cache-Control"] = "no-store"
+    require_roles(user, {Role.AICTE_OFFICER, Role.AICTE_MANAGER})
+    no_store(response)
     return overview(
         session,
         settings_of(request),
@@ -90,7 +73,7 @@ def get_signals(
     academic_year: Annotated[AcademicYear | None, Query()] = None,
     programme_id: UUID | None = None,
 ) -> SignalsResponse:
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return institution_signals(
         session,
         settings_of(request),
@@ -147,5 +130,5 @@ def get_decisions(
     )
     if signal_key is not None:
         statement = statement.where(IntegrityDecision.signal_key == signal_key)
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return paginate(session, statement, DecisionResponse, page, page_size)

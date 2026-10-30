@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -16,7 +15,6 @@ VerificationStatusLiteral = Literal[
 
 PROVENANCE_LABEL = "SIMULATED — not an official government identity verification"
 FORMAT_NOTE = "format check is local; not identity verification"
-IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 class VerificationRequest(BaseModel):

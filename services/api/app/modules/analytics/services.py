@@ -12,11 +12,9 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.pagination import Pagination
 from app.modules.analytics.schemas import (
     AgeBucket,
     AnalyticsFilters,
@@ -38,8 +36,11 @@ from app.modules.analytics.schemas import (
 from app.modules.cases.models import CLOSED_STATUSES, ReviewCase
 from app.modules.cases.services import case_flags
 from app.modules.institutions.models import Institution, IntakeRule, Programme
-from app.modules.intake.models import IntakeDeclaration
-from app.modules.intake.services import capacity_line, configured_rules
+from app.modules.intake.services import (
+    capacity_line,
+    configured_rules,
+    latest_declarations_bulk,
+)
 from app.modules.submissions.models import (
     ProcessingStatus,
     StudentRecordVersion,
@@ -102,13 +103,6 @@ class Counts:
         for name, value in other.categories.items():
             self.categories[name].declared_records += value.declared_records
             self.categories[name].active_records += value.active_records
-
-
-def page_of[T](rows: list[T], page: int, page_size: int) -> tuple[list[T], Pagination]:
-    return (
-        rows[(page - 1) * page_size : page * page_size],
-        Pagination(page=page, page_size=page_size, total=len(rows)),
-    )
 
 
 def pick(**values: object) -> Drilldown:
@@ -333,30 +327,6 @@ def enrolment_trends(
 # ---------------------------------------------------------------- completeness
 
 
-def latest_declarations(
-    session: Session, programme_ids: list[UUID]
-) -> dict[tuple[UUID, str], int]:
-    # Same "latest wins" ordering as intake.services.latest_declaration, in bulk.
-    rows = session.execute(
-        select(
-            IntakeDeclaration.programme_id,
-            IntakeDeclaration.academic_year,
-            IntakeDeclaration.declared_total,
-        )
-        .where(IntakeDeclaration.programme_id.in_(programme_ids))
-        .order_by(
-            IntakeDeclaration.programme_id,
-            IntakeDeclaration.academic_year,
-            IntakeDeclaration.created_at.desc(),
-            IntakeDeclaration.id.desc(),
-        )
-        .ext(
-            distinct_on(IntakeDeclaration.programme_id, IntakeDeclaration.academic_year)
-        )
-    )
-    return {(pid, year): total for pid, year, total in rows}
-
-
 def pending_candidates(
     session: Session, programme_ids: list[UUID]
 ) -> dict[tuple[UUID, str], int]:
@@ -381,7 +351,7 @@ def submission_completeness(
     units = programme_units(session, f)
     scopes = load_scopes(session, units, f.academic_year)
     programme_ids = [p.id for _, p in units]
-    declarations = latest_declarations(session, programme_ids)
+    declarations = latest_declarations_bulk(session, programme_ids)
     pending = pending_candidates(session, programme_ids)
     counts = load_counts(session, scopes)
     years = years_for(units, f, scopes, set(declarations) | set(pending))

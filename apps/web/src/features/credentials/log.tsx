@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { QueryBoundary } from "@/components/ui/feedback";
+import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import type { components } from "@/lib/api/generated";
 import { outcomeLabel, outcomeTone, when } from "./shared";
@@ -43,66 +43,63 @@ export function VerificationLog() {
             <h2 id="log-title">Verifications</h2>
           </div>
         </header>
-        {log.isPending ? (
-          <Loading label="Loading verification log…" />
-        ) : log.isError ? (
-          <ErrorPanel error={log.error} retry={() => void log.refetch()} />
-        ) : log.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No verifications yet</h3>
-            <p>Checks you run appear here.</p>
-          </div>
-        ) : (
-          <div
-            className="table-scroll"
-            tabIndex={0}
-            role="region"
-            aria-label="Verification log"
-          >
-            <table className="review-table">
-              <caption>Credential verifications</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Outcome</th>
-                  <th scope="col">Purpose</th>
-                  <th scope="col">Consent reference</th>
-                  {officer && <th scope="col">Verifier</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {log.data.data.map((e) => (
-                  <tr key={e.id}>
-                    <td>{when(e.verified_at)}</td>
-                    <td>
-                      <span
-                        className={`status-badge ${outcomeTone[e.outcome]}`}
-                      >
-                        {outcomeLabel[e.outcome]}
-                      </span>
-                    </td>
-                    <td>{e.purpose}</td>
-                    <td>{e.consent_ref}</td>
-                    {officer && (
-                      <td>
-                        <code>{e.verifier_user_id.slice(0, 8)}</code>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {log.data && (
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={log.data.pagination.total}
-            busy={log.isFetching}
-            change={setPage}
-          />
-        )}
+        <QueryBoundary query={log} loading="Loading verification log…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                <h3>No verifications yet</h3>
+                <p>Checks you run appear here.</p>
+              </div>
+            ) : (
+              <div
+                className="table-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label="Verification log"
+              >
+                <table className="review-table">
+                  <caption>Credential verifications</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Time</th>
+                      <th scope="col">Outcome</th>
+                      <th scope="col">Purpose</th>
+                      <th scope="col">Consent reference</th>
+                      {officer && <th scope="col">Verifier</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.data.map((e) => (
+                      <tr key={e.id}>
+                        <td>{when(e.verified_at)}</td>
+                        <td>
+                          <span
+                            className={`status-badge ${outcomeTone[e.outcome]}`}
+                          >
+                            {outcomeLabel[e.outcome]}
+                          </span>
+                        </td>
+                        <td>{e.purpose}</td>
+                        <td>{e.consent_ref}</td>
+                        {officer && (
+                          <td>
+                            <code>{e.verifier_user_id.slice(0, 8)}</code>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        </QueryBoundary>
+        <QueryPagination
+          query={log}
+          page={page}
+          pageSize={PAGE_SIZE}
+          change={setPage}
+        />
       </section>
     </>
   );

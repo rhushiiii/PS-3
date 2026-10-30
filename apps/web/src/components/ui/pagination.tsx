@@ -1,3 +1,5 @@
+import type { UseQueryResult } from "@tanstack/react-query";
+
 export function Pagination({
   page,
   total,
@@ -36,5 +38,32 @@ export function Pagination({
         </button>
       </div>
     </nav>
+  );
+}
+
+/** Pagination bar for a paged query; renders nothing until data exists. */
+export function QueryPagination<T extends { pagination: { total: number } }>({
+  query,
+  page,
+  pageSize,
+  change,
+  label,
+}: {
+  query: UseQueryResult<T>;
+  page: number;
+  pageSize: number;
+  change: (page: number) => void;
+  label?: string;
+}) {
+  if (!query.data) return null;
+  return (
+    <Pagination
+      page={page}
+      pageSize={pageSize}
+      total={query.data.pagination.total}
+      busy={query.isFetching}
+      change={change}
+      label={label}
+    />
   );
 }
