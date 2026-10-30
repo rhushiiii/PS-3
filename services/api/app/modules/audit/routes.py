@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import AwareDatetime
 
-from app.core.http import APIError, ErrorResponse, no_store
+from app.core.http import APIError, error_responses, no_store
 from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.audit import services
 from app.modules.audit.schemas import (
@@ -18,13 +18,7 @@ from app.modules.auth.models import Role, User
 router = APIRouter(
     prefix="/api/v1/audit",
     tags=["Audit explorer"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 404, 422, 503),
 )
 
 

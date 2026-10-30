@@ -174,51 +174,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [clear],
   );
 
-  const request = useCallback(
-    async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
-      const activeToken = token.current;
-      const attempt = generation.current;
-      if (!activeToken) throw new ApiError(401, "NOT_AUTHENTICATED");
-      if (Date.now() >= expiresAt.current) {
-        end("expired");
-        throw new ApiError(401, "SESSION_EXPIRED");
-      }
-      const controller = new AbortController();
-      const abort = () => controller.abort();
-      if (options.signal?.aborted) abort();
-      options.signal?.addEventListener("abort", abort, { once: true });
-      requests.current.add(controller);
-      try {
-        const result = await apiFetch<T>(
-          path,
-          { ...options, signal: controller.signal },
-          activeToken,
-        );
-        if (attempt !== generation.current)
-          throw new DOMException("Session ended", "AbortError");
-        return result;
-      } catch (error) {
-        if (
-          attempt === generation.current &&
-          error instanceof ApiError &&
-          error.status === 401
-        )
-          end(error.code === "SESSION_EXPIRED" ? "expired" : "invalid");
-        throw error;
-      } finally {
-        options.signal?.removeEventListener("abort", abort);
-        requests.current.delete(controller);
-      }
-    },
-    [end],
-  );
-
-  const download = useCallback(
-    async (
-      path: string,
-      signal?: AbortSignal,
-      format?: { accept: string; fallbackName: string },
-    ) => {
+  const authenticated = useCallback(
+    async <T,>(
+      operation: (token: string, signal: AbortSignal) => Promise<T>,
+      signal?: AbortSignal | null,
+    ): Promise<T> => {
       const activeToken = token.current;
       const attempt = generation.current;
       if (!activeToken) throw new ApiError(401, "NOT_AUTHENTICATED");
@@ -232,13 +192,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signal?.addEventListener("abort", abort, { once: true });
       requests.current.add(controller);
       try {
-        const result = await apiDownload(
-          path,
-          activeToken,
-          controller.signal,
-          format?.accept,
-          format?.fallbackName,
-        );
+        const result = await operation(activeToken, controller.signal);
         if (attempt !== generation.current)
           throw new DOMException("Session ended", "AbortError");
         return result;
@@ -256,6 +210,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [end],
+  );
+
+  const request = useCallback(
+    <T,>(path: string, options: RequestInit = {}): Promise<T> =>
+      authenticated(
+        (activeToken, signal) =>
+          apiFetch<T>(path, { ...options, signal }, activeToken),
+        options.signal,
+      ),
+    [authenticated],
+  );
+
+  const download = useCallback(
+    (
+      path: string,
+      signal?: AbortSignal,
+      format?: { accept: string; fallbackName: string },
+    ) =>
+      authenticated(
+        (activeToken, activeSignal) =>
+          apiDownload(
+            path,
+            activeToken,
+            activeSignal,
+            format?.accept,
+            format?.fallbackName,
+          ),
+        signal,
+      ),
+    [authenticated],
   );
 
   return (

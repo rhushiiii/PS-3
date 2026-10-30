@@ -1,22 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
-import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import type { components } from "@/lib/api/generated";
 
 export type InstitutionPage =
   components["schemas"]["Page_InstitutionResponse_"];
 
-/** Up to 100 institutions for filter dropdowns; callers own the cache key. */
-export function useInstitutionOptions(
-  queryKey: readonly unknown[],
-  enabled: boolean,
-) {
-  const { request } = useSession();
-  return useQuery({
-    queryKey,
-    enabled,
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+/** Up to 100 institutions for filter dropdowns. */
+export function useInstitutionOptions(enabled: boolean) {
+  const scope = useScope("institutions");
+  return useApiQuery<InstitutionPage>(
+    scope,
+    "/institutions?page=1&page_size=100",
+    { enabled },
+  );
 }

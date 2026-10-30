@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.http import APIError, not_found
-from app.core.idempotency import check_fingerprint
+from app.core.idempotency import find_replay as find_replay_by_key
 from app.modules.audit.services import record_action
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
 from app.modules.submissions.models import StudentRecordVersion
 from app.modules.validation.rules import token_hash, valid_token
+from app.modules.validation.services import matching_key as matching_key
 from app.modules.verification.models import ApaarVerification
 from app.modules.verification.provider import (
     APAARProvider,
@@ -59,17 +60,6 @@ def scoped_record(
     ):
         raise not_found()
     return record
-
-
-def matching_key(settings: Settings) -> bytes:
-    secret = settings.apaar_matching_key
-    if secret is None or len(secret.get_secret_value().encode()) < 32:
-        raise APIError(
-            422,
-            "MATCHING_CONFIGURATION_UNAVAILABLE",
-            "APAAR matching requires an environment key of at least 32 bytes",
-        )
-    return secret.get_secret_value().encode()
 
 
 def build_provider(key: bytes) -> APAARProvider:
@@ -153,20 +143,17 @@ def request_fingerprint(
 def find_replay(
     session: Session, record_id: UUID, key: str, fingerprint: str
 ) -> ApaarVerification | None:
-    existing = session.scalar(
-        select(ApaarVerification).where(
+    return find_replay_by_key(
+        session,
+        ApaarVerification,
+        [
             ApaarVerification.record_version_id == record_id,
             ApaarVerification.idempotency_key == key,
-        )
+        ],
+        fingerprint_attr="request_fingerprint",
+        fingerprint=fingerprint,
+        message="Idempotency-Key was already used with a different request",
     )
-    if existing is None:
-        return None
-    check_fingerprint(
-        existing.request_fingerprint,
-        fingerprint,
-        "Idempotency-Key was already used with a different request",
-    )
-    return existing
 
 
 def check_retry(session: Session, record_id: UUID, retry_of: UUID) -> None:

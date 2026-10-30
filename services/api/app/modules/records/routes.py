@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from app.core.http import AppSettings, ErrorResponse, no_store
+from app.core.http import AppSettings, error_responses, no_store
 from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.institutions.schemas import AcademicYear
@@ -15,7 +15,7 @@ from app.modules.validation.schemas import RecordStatus
 router = APIRouter(
     prefix="/api/v1/records",
     tags=["Record registry"],
-    responses={code: {"model": ErrorResponse} for code in (401, 403, 404, 422, 500)},
+    responses=error_responses(401, 403, 404, 422, 500),
 )
 EnrollmentStatus = Annotated[str | None, Query(pattern=f"^({'|'.join(STATUSES)})$")]
 

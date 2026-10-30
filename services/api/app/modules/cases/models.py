@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    ColumnElement,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -85,6 +87,15 @@ class ReviewCase(Base):
     severity: Mapped[str] = mapped_column(String(16), server_default="MEDIUM")
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolution_reason: Mapped[str | None] = mapped_column(Text)
+
+
+def overdue_clause(now: datetime) -> ColumnElement[bool]:
+    """The single SQL definition of "overdue"; Python's case_flags must agree."""
+    return and_(
+        ReviewCase.due_at.is_not(None),
+        ReviewCase.due_at < now,
+        ReviewCase.status.not_in(CLOSED_STATUSES),
+    )
 
 
 class CaseRecord(Base):

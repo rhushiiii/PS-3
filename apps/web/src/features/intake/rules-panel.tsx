@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
@@ -11,7 +11,9 @@ import {
   validAcademicYear,
 } from "@/features/submissions/data";
 import { ApiError } from "@/lib/api/client";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import type { components } from "@/lib/api/generated";
+import { when } from "@/lib/format";
 import {
   DEFAULT_YEAR,
   DemoRuleNotice,
@@ -118,7 +120,6 @@ export function IntakeRulesPanel({
   institutionId: string;
   canEdit: boolean;
 }) {
-  const { session, request } = useSession();
   const queryClient = useQueryClient();
   const { options } = useSubmissionContext(institutionId);
   const [yearDraft, setYearDraft] = useState(DEFAULT_YEAR);
@@ -127,34 +128,18 @@ export function IntakeRulesPanel({
   const [editing, setEditing] = useState<Rule | null>(null);
   const [notice, setNotice] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "intake-rules",
-    institutionId,
-  ];
+  const key = useScope("intake-rules", institutionId);
   const names = new Map(options.map((p) => [p.id, p.name]));
-  const rules = useQuery({
-    queryKey: [...key, "rules", year],
-    enabled: !!session,
-    retry: false,
-    queryFn: ({ signal }) =>
-      request<RulePage>(
-        `/institutions/${institutionId}/intake?academic_year=${year}&page=1&page_size=100`,
-        { signal },
-      ),
-  });
-  const changes = useQuery({
-    queryKey: [...key, "changes", historyPage],
-    enabled: !!session && canEdit,
-    retry: false,
-    queryFn: ({ signal }) =>
-      request<ChangePage>(
-        `/institutions/${institutionId}/intake/changes?page=${historyPage}&page_size=5`,
-        { signal },
-      ),
-  });
+  const rules = useApiQuery<RulePage>(
+    [...key, "rules", year],
+    `/institutions/${institutionId}/intake?academic_year=${year}&page=1&page_size=100`,
+    { retry: false },
+  );
+  const changes = useApiQuery<ChangePage>(
+    [...key, "changes", historyPage],
+    `/institutions/${institutionId}/intake/changes?page=${historyPage}&page_size=5`,
+    { enabled: canEdit, retry: false },
+  );
   const forbidden =
     rules.error instanceof ApiError && rules.error.status === 403;
   const ruleById = new Map((rules.data?.data ?? []).map((r) => [r.id, r]));
@@ -299,11 +284,7 @@ export function IntakeRulesPanel({
                     const rule = ruleById.get(change.intake_rule_id);
                     return (
                       <tr key={change.id}>
-                        <td>
-                          <time dateTime={change.created_at}>
-                            {new Date(change.created_at).toLocaleString()}
-                          </time>
-                        </td>
+                        <td>{when(change.created_at)}</td>
                         <td>
                           {rule
                             ? `${names.get(rule.programme_id) ?? "Programme"} · ${categoryLabel(rule.category)}`

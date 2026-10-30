@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse, no_store, not_found
+from app.core.http import error_responses, no_store, not_found
 from app.core.pagination import Page, PageNumber, PageSize, paginate
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
@@ -40,14 +40,7 @@ from app.modules.submissions.services import scoped_batch
 router = APIRouter(
     prefix="/api/v1",
     tags=["Intake governance (DEMO)"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        409: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 404, 409, 422, 503),
 )
 
 

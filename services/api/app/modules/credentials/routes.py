@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
-from app.core.http import ErrorResponse, Now, no_store, settings_of
+from app.core.http import Now, error_responses, no_store, settings_of
 from app.core.pagination import Page, PageNumber, PageSize
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
@@ -27,9 +27,7 @@ from app.modules.credentials.services import (
 router = APIRouter(
     prefix="/api/v1/credentials",
     tags=["Admission credentials (DEMO)"],
-    responses={
-        code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)
-    },
+    responses=error_responses(401, 403, 404, 409, 422, 500, 503),
 )
 
 

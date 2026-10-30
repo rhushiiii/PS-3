@@ -1,6 +1,6 @@
 """Pagination shared by institution and submission APIs."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Annotated
 
 from fastapi import Query
@@ -52,9 +52,25 @@ def paginate[Model: Base, View: BaseModel](
     page: int,
     page_size: int,
 ) -> Page[View]:
-    total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    rows = session.scalars(statement.offset((page - 1) * page_size).limit(page_size))
+    total = count_rows(session, statement)
+    rows = session.scalars(window(statement, page, page_size))
     return Page[View](
         data=[view.model_validate(row) for row in rows],
+        pagination=Pagination(page=page, page_size=page_size, total=total),
+    )
+
+
+def paginate_rows[*Row, View: BaseModel](
+    session: Session,
+    statement: Select[*Row],
+    view: Callable[..., View],
+    page: int,
+    page_size: int,
+) -> Page[View]:
+    """Page a row-tuple select through a view constructor instead of model_validate."""
+    total = count_rows(session, statement)
+    rows = session.execute(window(statement, page, page_size)).all()
+    return Page[View](
+        data=[view(*row) for row in rows],
         pagination=Pagination(page=page, page_size=page_size, total=total),
     )

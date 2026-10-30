@@ -1,12 +1,18 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { QueryBoundary, FilterOptionsError } from "@/components/ui/feedback";
+import {
+  EmptyState,
+  QueryBoundary,
+  FilterOptionsError,
+} from "@/components/ui/feedback";
+import { InstitutionSelect } from "@/components/ui/filters";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { DashboardTable, prettyLabel } from "@/features/dashboards/components";
 import type { components } from "@/lib/api/generated";
+import { when } from "@/lib/format";
 import { useInstitutionOptions } from "@/features/institutions/options";
 
 type AuditPage = components["schemas"]["Page_AuditEventResponse_"];
@@ -44,46 +50,40 @@ function show(value: unknown): string {
 }
 
 export function AuditExplorer() {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const scope = ["private", session?.generation, session?.user.id, "audit"];
 
-  const actions = useQuery({
-    queryKey: [...scope, "actions"],
-    enabled: !!session,
-    queryFn: ({ signal }) => request<Actions>("/audit/actions", { signal }),
-  });
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions"],
-    !!session,
+  const actions = useApiQuery<Actions>(
+    useScope("audit", "actions"),
+    "/audit/actions",
   );
+  const institutions = useInstitutionOptions(!!session);
   const institutionNames = new Map(
     (institutions.data?.data ?? []).map((i) => [i.id, i.name]),
   );
 
-  const events = useQuery<AuditPage>({
-    queryKey: [...scope, "events", filters, page],
-    enabled: !!session,
-    placeholderData: (previous) => previous,
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: String(PAGE_SIZE),
-      });
-      if (filters.action) params.set("action", filters.action);
-      if (filters.entityType) params.set("entity_type", filters.entityType);
-      if (filters.institution)
-        params.set("institution_id", filters.institution);
-      if (filters.actor) params.set("actor_user_id", filters.actor);
-      if (filters.from) params.set("from", filters.from);
-      if (filters.to) params.set("to", filters.to);
-      return request<AuditPage>(`/audit/events?${params}`, { signal });
-    },
-  });
+  const eventsPath = (() => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(PAGE_SIZE),
+    });
+    if (filters.action) params.set("action", filters.action);
+    if (filters.entityType) params.set("entity_type", filters.entityType);
+    if (filters.institution) params.set("institution_id", filters.institution);
+    if (filters.actor) params.set("actor_user_id", filters.actor);
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+    return `/audit/events?${params}`;
+  })();
+  const events = useApiQuery<AuditPage>(
+    useScope("audit", "events", filters, page),
+    eventsPath,
+    { placeholderData: (previous) => previous },
+  );
 
   function apply() {
     const actor = draft.actor.trim();
@@ -151,22 +151,11 @@ export function AuditExplorer() {
               placeholder="e.g. case"
             />
           </label>
-          <label>
-            Institution
-            <select
-              value={draft.institution}
-              onChange={(e) =>
-                setDraft({ ...draft, institution: e.target.value })
-              }
-            >
-              <option value="">All institutions</option>
-              {(institutions.data?.data ?? []).map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <InstitutionSelect
+            institutions={institutions.data?.data ?? []}
+            value={draft.institution}
+            onChange={(value) => setDraft({ ...draft, institution: value })}
+          />
           <label>
             Actor id
             <input
@@ -224,10 +213,9 @@ export function AuditExplorer() {
         <QueryBoundary query={events} loading="Loading audit events…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No audit events</h3>
-                <p>No events match these filters.</p>
-              </div>
+              <EmptyState title="No audit events">
+                No events match these filters.
+              </EmptyState>
             ) : (
               <DashboardTable label="Audit events table">
                 <caption className="sr-only">
@@ -253,11 +241,7 @@ export function AuditExplorer() {
                     return (
                       <Fragment key={event.id}>
                         <tr>
-                          <td>
-                            <time dateTime={event.occurred_at}>
-                              {new Date(event.occurred_at).toLocaleString()}
-                            </time>
-                          </td>
+                          <td>{when(event.occurred_at)}</td>
                           <td>{event.action}</td>
                           <td>
                             {event.actor ? (

@@ -4,15 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
-import { ErrorPanel, QueryBoundary } from "@/components/ui/feedback";
+import {
+  EmptyState,
+  ErrorPanel,
+  QueryBoundary,
+} from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { isUUID } from "@/lib/api/client";
-import {
-  snapshotLabels,
-  useSubmissionContext,
-  validAcademicYear,
-  type History,
-} from "./data";
+import { useDraftFilters } from "@/lib/api/hooks";
+import { snapshotLabel, snapshotTone, when } from "@/lib/format";
+import { useSubmissionContext, validAcademicYear, type History } from "./data";
 
 export function SubmissionHistory({
   institutionId,
@@ -22,12 +23,27 @@ export function SubmissionHistory({
   const { session, request } = useSession();
   const { institution, programmes, options } =
     useSubmissionContext(institutionId);
-  const [programme, setProgramme] = useState("");
-  const [year, setYear] = useState("");
-  const [filters, setFilters] = useState({ programme: "", year: "" });
   const [page, setPage] = useState(1);
-  const [formError, setFormError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const restart = () => {
+    setPage(1);
+    setExpanded(null);
+  };
+  const {
+    draft,
+    setDraft,
+    filters,
+    error: formError,
+    apply,
+    clear,
+  } = useDraftFilters(
+    { programme: "", year: "" },
+    (candidate) =>
+      candidate.year && !validAcademicYear(candidate.year)
+        ? "Use consecutive years, for example 2026-27."
+        : null,
+    { onApplied: restart, onCleared: restart },
+  );
   const admin = session?.user.role === "INSTITUTION_ADMIN";
   const history = useQuery({
     queryKey: [
@@ -109,21 +125,16 @@ export function SubmissionHistory({
                 className="submission-filters"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (year && !validAcademicYear(year)) {
-                    setFormError("Use consecutive years, for example 2026-27.");
-                    return;
-                  }
-                  setFormError("");
-                  setFilters({ programme, year });
-                  setPage(1);
-                  setExpanded(null);
+                  apply();
                 }}
               >
                 <label>
                   Programme
                   <select
-                    value={programme}
-                    onChange={(event) => setProgramme(event.target.value)}
+                    value={draft.programme}
+                    onChange={(event) =>
+                      setDraft({ ...draft, programme: event.target.value })
+                    }
                     disabled={programmes.isPending || programmes.isError}
                   >
                     <option value="">All programmes</option>
@@ -138,8 +149,10 @@ export function SubmissionHistory({
                 <label>
                   Academic year
                   <input
-                    value={year}
-                    onChange={(event) => setYear(event.target.value)}
+                    value={draft.year}
+                    onChange={(event) =>
+                      setDraft({ ...draft, year: event.target.value })
+                    }
                     placeholder="All years"
                     maxLength={7}
                     aria-describedby="history-year-help"
@@ -151,14 +164,7 @@ export function SubmissionHistory({
                 <button
                   className="button secondary"
                   type="button"
-                  onClick={() => {
-                    setProgramme("");
-                    setYear("");
-                    setFilters({ programme: "", year: "" });
-                    setPage(1);
-                    setFormError("");
-                    setExpanded(null);
-                  }}
+                  onClick={clear}
                 >
                   Clear filters
                 </button>
@@ -191,13 +197,10 @@ export function SubmissionHistory({
               <QueryBoundary query={history} loading="Loading submissions…">
                 {(data) =>
                   data.data.length === 0 ? (
-                    <div className="empty-state">
-                      <h3>No submissions found</h3>
-                      <p>
-                        No stored uploads match these filters. An empty history
-                        does not establish current enrolment.
-                      </p>
-                    </div>
+                    <EmptyState title="No submissions found">
+                      No stored uploads match these filters. An empty history
+                      does not establish current enrolment.
+                    </EmptyState>
                   ) : (
                     <div
                       className="table-scroll"
@@ -234,11 +237,7 @@ export function SubmissionHistory({
                                   </Link>
                                 </small>
                                 <small className="cell-note">
-                                  <time dateTime={batch.received_at}>
-                                    {new Date(
-                                      batch.received_at,
-                                    ).toLocaleString()}
-                                  </time>
+                                  {when(batch.received_at)}
                                 </small>
                                 {batch.warnings?.includes(
                                   "DUPLICATE_UPLOAD",
@@ -273,9 +272,9 @@ export function SubmissionHistory({
                               </td>
                               <td>
                                 <span
-                                  className={`status-badge ${batch.snapshot_state === "CURRENT" ? "active" : "neutral"}`}
+                                  className={`status-badge ${snapshotTone(batch.snapshot_state)}`}
                                 >
-                                  {snapshotLabels[batch.snapshot_state]}
+                                  {snapshotLabel(batch.snapshot_state)}
                                 </span>
                                 <small className="cell-note">
                                   {batch.snapshot_state === "CURRENT"

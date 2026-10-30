@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import type { components } from "@/lib/api/generated";
+import { when } from "@/lib/format";
 import {
   DemoRuleNotice,
   ScrollTable,
@@ -83,11 +85,8 @@ function AssessmentDetail({ assessment }: { assessment: Assessment }) {
   return (
     <div className="intake-assessment">
       <p className="form-help">
-        Assessed{" "}
-        <time dateTime={assessment.computed_at}>
-          {new Date(assessment.computed_at).toLocaleString()}
-        </time>{" "}
-        · rule version {assessment.rule_version} · {assessment.source_label} ·{" "}
+        Assessed {when(assessment.computed_at)} · rule version{" "}
+        {assessment.rule_version} · {assessment.source_label} ·{" "}
         {result.is_current_snapshot
           ? "this batch is the current snapshot"
           : "this batch is not the current snapshot"}
@@ -227,39 +226,24 @@ export function IntakeAssessmentPanel({
   batchId: string;
   processed: boolean;
 }) {
-  const { session, request } = useSession();
+  const { request } = useSession();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "intake-assessment",
-    batchId,
-  ];
-  const history = useQuery({
-    queryKey: [...key, "list", page],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<AssessmentPage>(
-        `/submissions/${batchId}/intake-assessments?page=${page}&page_size=5`,
-        { signal },
-      ),
-  });
+  const key = useScope("intake-assessment", batchId);
+  const history = useApiQuery<AssessmentPage>(
+    [...key, "list", page],
+    `/submissions/${batchId}/intake-assessments?page=${page}&page_size=5`,
+  );
   const newest = history.data?.data[0]?.id ?? "";
   const activeId = selected || (page === 1 ? newest : "");
-  const detail = useQuery({
-    queryKey: [...key, "detail", activeId],
-    enabled: !!session && !!activeId,
-    queryFn: ({ signal }) =>
-      request<Assessment>(
-        `/submissions/${batchId}/intake-assessments/${activeId}`,
-        { signal },
-      ),
-  });
+  const detail = useApiQuery<Assessment>(
+    [...key, "detail", activeId],
+    `/submissions/${batchId}/intake-assessments/${activeId}`,
+    { enabled: !!activeId },
+  );
   const run = useMutation({
     mutationFn: () =>
       request<Assessment>(`/submissions/${batchId}/intake-assessments`, {
@@ -269,7 +253,15 @@ export function IntakeAssessmentPanel({
       setError("");
       setPage(1);
       setSelected(created.id);
-      queryClient.setQueryData([...key, "detail", created.id], created);
+      queryClient.setQueryData(
+        [
+          ...key,
+          "detail",
+          created.id,
+          `/submissions/${batchId}/intake-assessments/${created.id}`,
+        ],
+        created,
+      );
       setNotice("Assessment recorded. Earlier assessments are kept unchanged.");
       await queryClient.invalidateQueries({ queryKey: [...key, "list"] });
     },

@@ -1,32 +1,35 @@
 "use client";
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
 import { isUUID } from "@/lib/api/client";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import type { components, paths } from "@/lib/api/generated";
 
 export type Batch = components["schemas"]["BatchResponse"];
 export type History =
   paths["/api/v1/submissions"]["get"]["responses"][200]["content"]["application/json"];
-type Programmes =
+export type Programmes =
   paths["/api/v1/institutions/{institution_id}/programmes"]["get"]["responses"][200]["content"]["application/json"];
 
 export function useSubmissionContext(institutionId: string) {
   const { session, request } = useSession();
-  const key = ["private", session?.generation, session?.user.id];
-  const enabled = !!session && isUUID(institutionId);
-  const institution = useQuery({
-    queryKey: [...key, "institution", institutionId],
-    enabled,
-    queryFn: ({ signal }) =>
-      request<components["schemas"]["InstitutionResponse"]>(
-        `/institutions/${institutionId}`,
-        { signal },
-      ),
-  });
+  const valid = isUUID(institutionId);
+  const scope = useScope("institution", institutionId);
+  const institution = useApiQuery<components["schemas"]["InstitutionResponse"]>(
+    scope,
+    `/institutions/${institutionId}`,
+    { enabled: valid },
+  );
   const programmes = useInfiniteQuery({
-    queryKey: [...key, "submission-programmes", institutionId],
-    enabled: enabled && !!institution.data,
+    queryKey: [
+      "private",
+      session?.generation,
+      session?.user.id,
+      "submission-programmes",
+      institutionId,
+    ],
+    enabled: valid && !!session && !!institution.data,
     initialPageParam: 1,
     queryFn: ({ signal, pageParam }) =>
       request<Programmes>(
@@ -46,9 +49,3 @@ export function useSubmissionContext(institutionId: string) {
 }
 
 export { validAcademicYear } from "@/lib/academic-year";
-
-export const snapshotLabels = {
-  CANDIDATE: "Candidate",
-  CURRENT: "Current",
-  PREVIOUS: "Previous",
-} as const;

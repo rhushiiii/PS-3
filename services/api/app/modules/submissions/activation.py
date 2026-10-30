@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.core.database import get_session
+from app.core.database import get_session, transact
 from app.core.http import APIError, not_found
 from app.core.pagination import paginate_list
 from app.modules.audit.services import record_action
@@ -31,9 +31,16 @@ from app.modules.submissions.schemas import (
     OmittedRecord,
     ReviewResponse,
 )
-from app.modules.submissions.services import batch_rows, scoped_batch, snapshot_counts
+from app.modules.submissions.services import (
+    batch_rows,
+    identifier_maps,
+    normalized_status,
+    scoped_batch,
+    snapshot_counts,
+)
 from app.modules.validation.models import ValidationRun
 from app.modules.validation.rules import CATEGORIES, STATUSES, structural_findings
+from app.modules.validation.schemas import RunResponse
 from app.modules.validation.services import (
     findings_for,
     require_run,
@@ -146,15 +153,8 @@ def comparison(
             "Absent from replacement declaration; not inferred withdrawal or transfer"
         ),
     }
-    before_ids = {row.college_student_id: row for row in current}
-    after_ids = {row.college_student_id: row for row in candidate}
-    ambiguous = (
-        len(before_ids) != len(current)
-        or len(after_ids) != len(candidate)
-        or "" in before_ids
-        or "" in after_ids
-    )
-    if ambiguous:
+    maps = identifier_maps(current, candidate)
+    if maps is None:
         result.update(
             {
                 "identifier_comparison": "UNAVAILABLE_AMBIGUOUS_IDENTIFIERS",
@@ -168,6 +168,7 @@ def comparison(
             }
         )
         return result
+    before_ids, after_ids = maps
     omitted = [row for row in current if row.college_student_id not in after_ids]
     retained = [key for key in after_ids if key in before_ids]
     status_transitions: Counter[tuple[str, str]] = Counter()
@@ -177,12 +178,8 @@ def comparison(
         if old.enrollment_status != new.enrollment_status:
             status_transitions[
                 (
-                    old.enrollment_status
-                    if old.enrollment_status in STATUSES
-                    else "UNSUPPORTED",
-                    new.enrollment_status
-                    if new.enrollment_status in STATUSES
-                    else "UNSUPPORTED",
+                    normalized_status(old.enrollment_status),
+                    normalized_status(new.enrollment_status),
                 )
             ] += 1
         if old.admission_category != new.admission_category:
@@ -233,16 +230,12 @@ def scoped_review(
     return review
 
 
-def review_response(
-    session: Session, review: SubmissionReview, *, page: int = 1, page_size: int = 20
-) -> ReviewResponse:
-    batch = session.get(SubmissionBatch, review.batch_id, populate_existing=True)
-    scope = session.get(SubmissionScope, review.scope_id, populate_existing=True)
-    assert batch is not None and scope is not None
-    run = require_run(session, batch.id, review.validation_run_id)
-    allowed = eligibility(session, batch, run)
-    if review.review_snapshot_json["identifier_comparison"] != "COMPLETE":
-        allowed = {
+def _comparison_blocker(
+    allowed: dict[str, Any], snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    """A review whose identifier comparison failed can never activate."""
+    if snapshot["identifier_comparison"] != "COMPLETE":
+        return {
             **allowed,
             "eligible": False,
             "blocking_reasons": [
@@ -250,6 +243,27 @@ def review_response(
                 "COMPARISON_UNAVAILABLE",
             ],
         }
+    return allowed
+
+
+def _assessment_now(run: ValidationRun, assessment: RunResponse) -> dict[str, Any]:
+    return {
+        "cross_current_freshness": assessment.cross_current_freshness,
+        "matching_assessment": run.summary_json["matching_assessment"],
+        "current_overlap_records": assessment.current_overlap_records,
+    }
+
+
+def review_response(
+    session: Session, review: SubmissionReview, *, page: int = 1, page_size: int = 20
+) -> ReviewResponse:
+    batch = session.get(SubmissionBatch, review.batch_id, populate_existing=True)
+    scope = session.get(SubmissionScope, review.scope_id, populate_existing=True)
+    assert batch is not None and scope is not None
+    run = require_run(session, batch.id, review.validation_run_id)
+    allowed = _comparison_blocker(
+        eligibility(session, batch, run), review.review_snapshot_json
+    )
     if review.review_policy_version != REVIEW_POLICY_VERSION:
         allowed = {
             **allowed,
@@ -315,9 +329,7 @@ def review_response(
         },
         eligibility=allowed,
         assessment_now={
-            "cross_current_freshness": assessment.cross_current_freshness,
-            "matching_assessment": run.summary_json["matching_assessment"],
-            "current_overlap_records": assessment.current_overlap_records,
+            **_assessment_now(run, assessment),
             "historical_assessment": "AS_OF_RUN",
         },
         omitted_records=omitted_records,
@@ -328,7 +340,7 @@ def review_response(
 def create_review(
     session: Session, actor_id: UUID, batch_id: UUID, run_id: UUID
 ) -> ReviewResponse:
-    try:
+    with transact(session):
         user = administrator(session, actor_id)
         batch = scoped_batch(session, user, batch_id)
         scope = session.get(SubmissionScope, batch.scope_id)
@@ -342,16 +354,9 @@ def create_review(
         )
         findings = findings_for(session, run)
         assessment = run_response(session, run)
-        initial_eligibility = eligibility(session, batch, run)
-        if snapshot["identifier_comparison"] != "COMPLETE":
-            initial_eligibility = {
-                **initial_eligibility,
-                "eligible": False,
-                "blocking_reasons": [
-                    *initial_eligibility["blocking_reasons"],
-                    "COMPARISON_UNAVAILABLE",
-                ],
-            }
+        initial_eligibility = _comparison_blocker(
+            eligibility(session, batch, run), snapshot
+        )
         snapshot.update(
             {
                 "eligibility_at_review": initial_eligibility,
@@ -368,11 +373,7 @@ def create_review(
                 "findings_url": (
                     f"/api/v1/submissions/{batch.id}/findings?run_id={run.id}"
                 ),
-                "assessment_at_review": {
-                    "cross_current_freshness": assessment.cross_current_freshness,
-                    "matching_assessment": run.summary_json["matching_assessment"],
-                    "current_overlap_records": assessment.current_overlap_records,
-                },
+                "assessment_at_review": _assessment_now(run, assessment),
             }
         )
         review = SubmissionReview(
@@ -395,12 +396,7 @@ def create_review(
             entity_type="submission_reviews",
             entity_id=review.id,
         )
-        result = review_response(session, review)
-        session.commit()
-        return result
-    except Exception:
-        session.rollback()
-        raise
+        return review_response(session, review)
 
 
 def activate(

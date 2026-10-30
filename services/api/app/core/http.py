@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request, Response
@@ -42,6 +42,14 @@ class APIError(HTTPException):
 def not_found() -> APIError:
     """The shared 404 for missing or out-of-scope resources."""
     return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+
+
+def error_responses(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """OpenAPI error-documentation entries for a router's failure codes."""
+    entries: dict[int | str, dict[str, Any]] = {
+        code: {"model": ErrorResponse} for code in codes
+    }
+    return entries
 
 
 def no_store(response: Response) -> None:

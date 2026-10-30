@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
@@ -10,7 +10,9 @@ import {
   useSubmissionContext,
   validAcademicYear,
 } from "@/features/submissions/data";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import type { components } from "@/lib/api/generated";
+import { when } from "@/lib/format";
 import {
   DEFAULT_YEAR,
   DemoRuleNotice,
@@ -32,7 +34,7 @@ export function DeclaredTotalsPanel({
 }: {
   institutionId: string;
 }) {
-  const { session, request } = useSession();
+  const { request } = useSession();
   const queryClient = useQueryClient();
   const { options } = useSubmissionContext(institutionId);
   const [page, setPage] = useState(1);
@@ -43,23 +45,12 @@ export function DeclaredTotalsPanel({
   const [formError, setFormError] = useState("");
   const [pending, setPending] = useState<Draft | null>(null);
   const [notice, setNotice] = useState("");
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "declarations",
-    institutionId,
-  ];
+  const key = useScope("declarations", institutionId);
   const names = new Map(options.map((p) => [p.id, p.name]));
-  const list = useQuery({
-    queryKey: [...key, page],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<DeclarationPage>(
-        `/institutions/${institutionId}/declarations?page=${page}&page_size=10`,
-        { signal },
-      ),
-  });
+  const list = useApiQuery<DeclarationPage>(
+    [...key, page],
+    `/institutions/${institutionId}/declarations?page=${page}&page_size=10`,
+  );
   const create = useMutation({
     mutationFn: (body: Draft) =>
       request<Declaration>(`/institutions/${institutionId}/declarations`, {
@@ -227,11 +218,7 @@ export function DeclaredTotalsPanel({
                     </span>
                   </td>
                   <td>{d.basis}</td>
-                  <td>
-                    <time dateTime={d.created_at}>
-                      {new Date(d.created_at).toLocaleString()}
-                    </time>
-                  </td>
+                  <td>{when(d.created_at)}</td>
                 </tr>
               ))}
             </tbody>

@@ -13,11 +13,11 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import APIError, not_found
+from app.core.http import APIError
+from app.core.query import latest_per_key
 from app.modules.analytics import services as analytics
 from app.modules.analytics.schemas import AnalyticsMeta, TrendRow, UtilisationRow
 from app.modules.audit.services import record_action, redact
@@ -27,6 +27,8 @@ from app.modules.cases.models import CLOSED_STATUSES, ReviewCase
 from app.modules.cases.services import case_flags
 from app.modules.credentials.models import AdmissionCredential, CredentialVerification
 from app.modules.institutions.models import Institution
+from app.modules.institutions.services import forced_institution_id
+from app.modules.intake.services import utilisation_pct
 from app.modules.reports.schemas import (
     Cell,
     ReportDocument,
@@ -90,16 +92,17 @@ def authorize(user: User, kind: str, params: ReportParams) -> ReportParams:
     require_roles(user, KIND_ROLES[kind])
     if user.role != Role.INSTITUTION_ADMIN:
         return params
-    requested = params.filters.institution_id
-    if requested not in (None, user.institution_id):
-        raise not_found()
-    forced = analytics.Filters(
-        params.filters.academic_year,
-        user.institution_id,
-        params.filters.region,
-        params.filters.programme_code,
+    forced = forced_institution_id(user, params.filters.institution_id)
+    return ReportParams(
+        analytics.Filters(
+            params.filters.academic_year,
+            forced,
+            params.filters.region,
+            params.filters.programme_code,
+        ),
+        params.priority,
+        params.severity,
     )
-    return ReportParams(forced, params.priority, params.severity)
 
 
 def iso(value: datetime | None) -> str | None:
@@ -247,9 +250,7 @@ def intake_utilisation(
                 approved,
                 active,
                 sum(1 for r in known if r.exceeded) if known else None,
-                round(active / approved * 100, 1)
-                if active is not None and approved
-                else None,
+                utilisation_pct(active, approved),
             ]
         )
     return document(
@@ -523,19 +524,14 @@ def validation_findings(
     f = params.filters
     units = analytics.programme_units(session, f)
     by_programme = {p.id: (i, p) for i, p in units}
-    batch_statement = (
-        select(SubmissionBatch.id, SubmissionBatch.programme_id)
-        .where(
+    batch_statement = latest_per_key(
+        select(SubmissionBatch.id, SubmissionBatch.programme_id).where(
             SubmissionBatch.programme_id.in_(list(by_programme)),
             SubmissionBatch.status == ProcessingStatus.COMPLETED,
-        )
-        .order_by(
-            SubmissionBatch.programme_id,
-            SubmissionBatch.academic_year,
-            SubmissionBatch.received_at.desc(),
-            SubmissionBatch.id.desc(),
-        )
-        .ext(distinct_on(SubmissionBatch.programme_id, SubmissionBatch.academic_year))
+        ),
+        key=[SubmissionBatch.programme_id, SubmissionBatch.academic_year],
+        stamp=SubmissionBatch.received_at,
+        tie=SubmissionBatch.id,
     )
     if f.academic_year is not None:
         batch_statement = batch_statement.where(

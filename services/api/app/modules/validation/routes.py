@@ -2,12 +2,18 @@ from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse, no_store
-from app.core.pagination import Page, PageNumber, PageSize, Pagination, paginate_list
+from app.core.http import error_responses, no_store
+from app.core.pagination import (
+    Page,
+    PageNumber,
+    PageSize,
+    paginate_list,
+    paginate_rows,
+)
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.submissions.services import scoped_batch
 from app.modules.validation.models import ValidationRun
@@ -30,9 +36,7 @@ from app.modules.validation.services import (
 router = APIRouter(
     prefix="/api/v1/submissions",
     tags=["Local student validation"],
-    responses={
-        code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)
-    },
+    responses=error_responses(401, 403, 404, 409, 422, 500, 503),
 )
 ValidationSession = Annotated[Session, Depends(get_validation_session)]
 
@@ -81,28 +85,17 @@ def history(
     page_size: PageSize = 20,
 ) -> Page[RunResponse]:
     scoped_batch(session, user, batch_id)
-    runs = list(
-        session.scalars(
-            select(ValidationRun)
-            .where(ValidationRun.batch_id == batch_id)
-            .order_by(ValidationRun.completed_at.desc(), ValidationRun.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    )
-    total = (
-        session.scalar(
-            select(func.count())
-            .select_from(ValidationRun)
-            .where(ValidationRun.batch_id == batch_id)
-        )
-        or 0
+    result = paginate_rows(
+        session,
+        select(ValidationRun)
+        .where(ValidationRun.batch_id == batch_id)
+        .order_by(ValidationRun.completed_at.desc(), ValidationRun.id.desc()),
+        lambda run: run_response(session, run),
+        page,
+        page_size,
     )
     no_store(response)
-    return Page[RunResponse](
-        data=[run_response(session, run) for run in runs],
-        pagination=Pagination(page=page, page_size=page_size, total=total),
-    )
+    return result
 
 
 @router.get("/{batch_id}/validation-runs/{run_id}", response_model=RunResponse)

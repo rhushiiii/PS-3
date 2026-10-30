@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import cast
 
@@ -31,6 +32,17 @@ def build_engine(settings: Settings) -> Engine:
         connect_args={"connect_timeout": 3, "options": "-c statement_timeout=3000"},
         hide_parameters=True,
     )
+
+
+@contextmanager
+def transact(session: Session) -> Iterator[None]:
+    """Commit on success, roll back and re-raise on any failure."""
+    try:
+        yield
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
 
 def get_engine(request: Request) -> Engine:

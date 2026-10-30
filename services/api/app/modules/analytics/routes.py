@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_snapshot_session
-from app.core.http import AppSettings, ErrorResponse, Now, no_store
+from app.core.http import AppSettings, Now, error_responses, no_store
 from app.core.pagination import PageNumber, PageSize, paginate_list
 from app.modules.analytics import services
 from app.modules.analytics.schemas import (
@@ -24,12 +24,7 @@ from app.modules.intake.services import POOLING_NOTE
 router = APIRouter(
     prefix="/api/v1/analytics",
     tags=["Analytics (DEMO aggregates)"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 422, 503),
 )
 ProgrammeCode = Annotated[str | None, Query(max_length=64)]
 Region = Annotated[str | None, Query(max_length=64)]

@@ -1,5 +1,3 @@
-import csv
-import io
 import json
 import re
 from collections.abc import Callable
@@ -7,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from conftest import admission_csv
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import DBAPIError
@@ -26,7 +25,6 @@ from app.modules.submissions.models import (
     SubmissionBatch,
     SubmissionScope,
 )
-from app.modules.submissions.parsing import HEADERS
 from app.seed import seed_id
 
 Headers = Callable[[str], dict[str, str]]
@@ -39,23 +37,19 @@ def rows_csv(
     spec: list[tuple[str, str]], year: str = YEAR, status: str = "ACTIVE"
 ) -> bytes:
     """spec = [(category, status)]; synthetic ids and APAAR-like tokens only."""
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(HEADERS)
-    for index, (category, row_status) in enumerate(spec, start=1):
-        writer.writerow(
-            [
-                f"DEMO-I{index:03d}",
-                f"Synthetic {index}",
-                f"9000000{index:05d}",
-                year,
-                "DEMO-COMP",
-                category,
-                row_status or status,
-                "2026-08-01",
-            ]
+    return admission_csv(
+        *(
+            {
+                "college_student_id": f"DEMO-I{index:03d}",
+                "student_name": f"Synthetic {index}",
+                "apaar_id": f"9000000{index:05d}",
+                "academic_year": year,
+                "admission_category": category,
+                "enrollment_status": row_status or status,
+            }
+            for index, (category, row_status) in enumerate(spec, start=1)
         )
-    return output.getvalue().encode()
+    )
 
 
 def assess(

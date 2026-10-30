@@ -1,12 +1,12 @@
 import type { components } from "@/lib/api/generated";
+import { DEMO_TAG } from "@/lib/format";
 
 type Schemas = components["schemas"];
 export type CredentialSummary = Schemas["CredentialSummary"];
 export type CredentialPage = Schemas["Page_CredentialSummary_"];
 export type Outcome = Schemas["VerifyResponse"]["outcome"];
 
-export const DEMO_LABEL =
-  "SIMULATED / DEMO DATA — prototype key; not an official AICTE, APAAR or government document";
+export const DEMO_LABEL = `${DEMO_TAG} — prototype key; not an official AICTE, APAAR or government document`;
 
 export const outcomeLabel: Record<Outcome, string> = {
   VALID: "Valid",

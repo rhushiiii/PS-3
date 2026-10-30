@@ -636,20 +636,23 @@ def test_list_filters_and_institution_isolation(
     )
     assert found(officer, priority="HIGH", severity="LOW", overdue="false") == {third}
 
-    # Institution admins stay inside their own institution whatever they ask for.
+    # Institution admins stay inside their own institution whatever they ask for;
+    # a foreign institution filter is the shared 404, not an empty page.
     assert found(heads["admin"]) == {first, second}
     assert found(heads["admin"], priority="HIGH") == {first}
-    assert (
-        found(heads["admin"], institution_id=str(seed_id("institutions", "maple")))
-        == set()
+    foreign = client.get(
+        "/api/v1/cases",
+        headers=heads["admin"],
+        params={"institution_id": str(seed_id("institutions", "maple"))},
     )
+    assert foreign.status_code == 404, foreign.text
     assert found(heads["other_admin"]) == {third}
-    assert (
-        found(
-            heads["other_admin"], institution_id=str(seed_id("institutions", "cedar"))
-        )
-        == set()
+    other_foreign = client.get(
+        "/api/v1/cases",
+        headers=heads["other_admin"],
+        params={"institution_id": str(seed_id("institutions", "cedar"))},
     )
+    assert other_foreign.status_code == 404, other_foreign.text
 
     # Invalid filter values are rejected, and managers stay locked out.
     for params in (

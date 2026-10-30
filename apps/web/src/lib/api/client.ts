@@ -61,6 +61,40 @@ export function errorMessage(error: unknown): string {
   }
 }
 
+export type MutationErrorKind = "conflict" | "client" | "uncertain";
+
+/**
+ * Shared mutation-failure classification: a rejected change (conflict/client)
+ * is safe to show as-is, while anything else means the outcome is unknown and
+ * the request must never be silently retried.
+ */
+export function classifyMutationError(error: unknown): {
+  kind: MutationErrorKind;
+  status: number | null;
+  message: string;
+} {
+  if (error instanceof ApiError) {
+    if (error.status === 409)
+      return { kind: "conflict", status: 409, message: errorMessage(error) };
+    if (error.status >= 400 && error.status < 500)
+      return { kind: "client", status: error.status, message: errorMessage(error) };
+  }
+  return {
+    kind: "uncertain",
+    status: error instanceof ApiError ? error.status : null,
+    message: errorMessage(error),
+  };
+}
+
+/** A JSON request body for `session.request` without repeating the headers. */
+export function jsonInit(method: "POST" | "PATCH", body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
 export function apiBase(): string {
   const base =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api/v1";
@@ -79,19 +113,19 @@ export function apiBase(): string {
   return base.replace(/\/$/, "");
 }
 
-export async function apiFetch<T>(
+async function fetchResponse(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit,
   token?: string,
-): Promise<T> {
+  accept = "application/json",
+): Promise<Response> {
   if (!path.startsWith("/") || path.startsWith("//"))
     throw new ApiError(0, "INVALID_RESPONSE");
   const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
+  headers.set("Accept", accept);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  let response: Response;
   try {
-    response = await fetch(apiBase() + path, {
+    return await fetch(apiBase() + path, {
       ...options,
       headers,
       credentials: "omit",
@@ -103,20 +137,38 @@ export async function apiFetch<T>(
     if (error instanceof ApiError) throw error;
     throw new ApiError(0, "NETWORK_UNAVAILABLE");
   }
-  let body: unknown;
+}
+
+async function readJSON(response: Response): Promise<unknown> {
   try {
-    body = await response.json();
+    return await response.json();
   } catch {
     throw new ApiError(response.status, "INVALID_RESPONSE");
   }
-  if (!response.ok) {
-    const detail = isObject(body) && isObject(body.error) ? body.error : {};
-    throw new ApiError(
-      response.status,
-      typeof detail.code === "string" ? detail.code : "REQUEST_FAILED",
-      typeof detail.request_id === "string" ? detail.request_id : undefined,
-    );
-  }
+}
+
+function responseError(
+  response: Response,
+  body: unknown,
+  retryAfter?: number,
+): ApiError {
+  const detail = isObject(body) && isObject(body.error) ? body.error : {};
+  return new ApiError(
+    response.status,
+    typeof detail.code === "string" ? detail.code : "REQUEST_FAILED",
+    typeof detail.request_id === "string" ? detail.request_id : undefined,
+    retryAfter,
+  );
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string,
+): Promise<T> {
+  const response = await fetchResponse(path, options, token);
+  const body = await readJSON(response);
+  if (!response.ok) throw responseError(response, body);
   if (isObject(body) && response.headers.get("Idempotent-Replayed") === "true")
     replayed.add(body);
   // Stable structures come from generated contracts; security-critical login
@@ -138,36 +190,11 @@ export async function apiDownload(
   accept = "text/csv",
   fallbackName = "validation-feedback.csv",
 ): Promise<{ blob: Blob; filename: string }> {
-  if (!path.startsWith("/") || path.startsWith("//"))
-    throw new ApiError(0, "INVALID_RESPONSE");
-  let response: Response;
-  try {
-    response = await fetch(apiBase() + path, {
-      headers: {
-        Accept: accept,
-        Authorization: `Bearer ${token}`,
-      },
-      credentials: "omit",
-      cache: "no-store",
-      signal,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError")
-      throw error;
-    throw new ApiError(0, "NETWORK_UNAVAILABLE");
-  }
+  const response = await fetchResponse(path, { signal }, token, accept);
   if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new ApiError(response.status, "INVALID_RESPONSE");
-    }
-    const detail = isObject(body) && isObject(body.error) ? body.error : {};
-    throw new ApiError(
-      response.status,
-      typeof detail.code === "string" ? detail.code : "REQUEST_FAILED",
-      typeof detail.request_id === "string" ? detail.request_id : undefined,
+    throw responseError(
+      response,
+      await readJSON(response),
       retryAfterSeconds(response.headers.get("Retry-After")),
     );
   }

@@ -2,18 +2,26 @@
 
 import Link from "next/link";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import {
+  EnumSelect,
+  InstitutionSelect,
+  RegionSelect,
+} from "@/components/ui/filters";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { validAcademicYear } from "@/features/submissions/data";
 import type { components } from "@/lib/api/generated";
+import { displayCount, when } from "@/lib/format";
 import {
   CategoryBars,
   DashboardTable,
   MetricCard,
   prettyLabel,
 } from "@/features/dashboards/components";
+import { regionsOf } from "@/lib/format";
+import { CASE_PRIORITIES, CASE_SEVERITIES } from "@/features/cases/shared";
 import { useInstitutionOptions } from "@/features/institutions/options";
 
 type Schemas = components["schemas"];
@@ -39,7 +47,6 @@ type TabId = (typeof TABS)[number]["id"];
 type GroupBy = Trends["group_by"];
 const PAGE_SIZE = 25;
 const NO_DATA = "No data";
-
 type Filters = {
   year: string;
   institution: string;
@@ -54,16 +61,6 @@ const EMPTY: Filters = {
   priority: "",
   severity: "",
 };
-
-function num(value: number | null | undefined, suffix = ""): string {
-  return value === null || value === undefined
-    ? NO_DATA
-    : `${value.toLocaleString()}${suffix}`;
-}
-
-function when(value: string): string {
-  return new Date(value).toLocaleString();
-}
 
 function Frame({
   query,
@@ -102,9 +99,7 @@ function Frame({
             {coverage.programmes_with_current_snapshot} of{" "}
             {coverage.programmes_total} programmes
           </span>
-          <span>
-            As of <time dateTime={data.as_of}>{when(data.as_of)}</time>
-          </span>
+          <span>As of {when(data.as_of)}</span>
           <span>
             <span className="status-badge warning">
               {data.source_label === "DEMO" ? "SYNTHETIC / DEMO DATA" : ""}
@@ -155,7 +150,7 @@ function InstitutionCell({
 }
 
 export function AnalyticsExplorer() {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const officer = session?.user.role === "AICTE_OFFICER";
   const [tab, setTab] = useState<TabId>("trends");
   const [groupBy, setGroupBy] = useState<GroupBy>("academic_year");
@@ -164,15 +159,9 @@ export function AnalyticsExplorer() {
   const [error, setError] = useState("");
   const [pages, setPages] = useState<Record<string, number>>({});
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const scope = ["private", session?.generation, session?.user.id, "analytics"];
 
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions"],
-    !!session,
-  );
-  const regions = [
-    ...new Set((institutions.data?.data ?? []).map((i) => i.region)),
-  ].sort();
+  const institutions = useInstitutionOptions(!!session);
+  const regions = regionsOf(institutions.data?.data ?? []);
 
   const page = pages[tab] ?? 1;
   const setPage = (value: number) => setPages((p) => ({ ...p, [tab]: value }));
@@ -199,10 +188,7 @@ export function AnalyticsExplorer() {
     utilisation: `/analytics/intake-utilisation?${params({})}`,
     cases: `/analytics/case-performance?${params({})}`,
   };
-  const query = useQuery({
-    queryKey: [...scope, tab, paths[tab]],
-    enabled: !!session,
-    queryFn: ({ signal }) => request<Common>(paths[tab], { signal }),
+  const query = useApiQuery<Common>(useScope("analytics", tab), paths[tab], {
     // Each tab's response has a different shape (Trends/Completeness/
     // Utilisation/CasePerf) cast via the shared `Common` type below, so a
     // placeholder must only carry over within the same tab (smooth
@@ -287,70 +273,32 @@ export function AnalyticsExplorer() {
               />
             </label>
           )}
-          <label>
-            Institution
-            <select
-              value={draft.institution}
-              onChange={(e) =>
-                setDraft({ ...draft, institution: e.target.value })
-              }
-            >
-              <option value="">All institutions</option>
-              {(institutions.data?.data ?? []).map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Region
-            <select
-              value={draft.region}
-              onChange={(e) => setDraft({ ...draft, region: e.target.value })}
-            >
-              <option value="">All regions</option>
-              {regions.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
+          <InstitutionSelect
+            institutions={institutions.data?.data ?? []}
+            value={draft.institution}
+            onChange={(value) => setDraft({ ...draft, institution: value })}
+          />
+          <RegionSelect
+            regions={regions}
+            value={draft.region}
+            onChange={(value) => setDraft({ ...draft, region: value })}
+          />
           {tab === "cases" && (
             <>
-              <label>
-                Priority
-                <select
-                  value={draft.priority}
-                  onChange={(e) =>
-                    setDraft({ ...draft, priority: e.target.value })
-                  }
-                >
-                  <option value="">Any priority</option>
-                  {["LOW", "MEDIUM", "HIGH", "URGENT"].map((v) => (
-                    <option key={v} value={v}>
-                      {prettyLabel(v)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Severity
-                <select
-                  value={draft.severity}
-                  onChange={(e) =>
-                    setDraft({ ...draft, severity: e.target.value })
-                  }
-                >
-                  <option value="">Any severity</option>
-                  {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((v) => (
-                    <option key={v} value={v}>
-                      {prettyLabel(v)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <EnumSelect
+                label="Priority"
+                values={CASE_PRIORITIES}
+                value={draft.priority}
+                onChange={(value) => setDraft({ ...draft, priority: value })}
+                allLabel="Any priority"
+              />
+              <EnumSelect
+                label="Severity"
+                values={CASE_SEVERITIES}
+                value={draft.severity}
+                onChange={(value) => setDraft({ ...draft, severity: value })}
+                allLabel="Any severity"
+              />
             </>
           )}
           <button className="button secondary" type="submit">
@@ -523,9 +471,11 @@ function TrendsView({ data, officer }: { data: Trends; officer: boolean }) {
                     : prettyLabel(row.status)}
                 </span>
               </td>
-              <td>{num(row.active_records)}</td>
-              <td>{num(row.declared_records)}</td>
-              <td>{num(row.unclassified_active_records)}</td>
+              <td>{displayCount(row.active_records, "", NO_DATA)}</td>
+              <td>{displayCount(row.declared_records, "", NO_DATA)}</td>
+              <td>
+                {displayCount(row.unclassified_active_records, "", NO_DATA)}
+              </td>
               <td>
                 {row.categories
                   ? Object.entries(row.categories)
@@ -618,18 +568,24 @@ function CompletenessView({
                   )}
                 </td>
                 <td>
-                  {row.has_declaration ? num(row.declared_total) : NO_DATA}
+                  {row.has_declaration
+                    ? displayCount(row.declared_total, "", NO_DATA)
+                    : NO_DATA}
                 </td>
                 <td>
                   {row.has_current_snapshot
-                    ? num(row.current_declared_records)
+                    ? displayCount(row.current_declared_records, "", NO_DATA)
                     : NO_DATA}
                 </td>
-                <td>{row.shortfall === null ? "—" : num(row.shortfall)}</td>
+                <td>
+                  {row.shortfall === null
+                    ? "—"
+                    : displayCount(row.shortfall, "", NO_DATA)}
+                </td>
                 <td>{row.pending_candidate_count}</td>
                 <td>
                   {row.last_activated_at
-                    ? when(row.last_activated_at)
+                    ? new Date(row.last_activated_at).toLocaleString()
                     : NO_DATA}
                 </td>
               </tr>
@@ -735,10 +691,10 @@ function UtilisationView({
                     {statusText[row.status]}
                   </span>
                 </td>
-                <td>{num(row.approved_seats)}</td>
-                <td>{num(row.current_active)}</td>
-                <td>{num(row.utilisation_pct, "%")}</td>
-                <td>{num(row.remaining_capacity)}</td>
+                <td>{displayCount(row.approved_seats, "", NO_DATA)}</td>
+                <td>{displayCount(row.current_active, "", NO_DATA)}</td>
+                <td>{displayCount(row.utilisation_pct, "%", NO_DATA)}</td>
+                <td>{displayCount(row.remaining_capacity, "", NO_DATA)}</td>
                 <td>
                   {row.exceeded === null ? (
                     "—"
@@ -860,9 +816,9 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
             <tr key={r.priority}>
               <th scope="row">{prettyLabel(r.priority)}</th>
               <td>{r.resolved_count}</td>
-              <td>{num(r.mean_days)}</td>
-              <td>{num(r.median_days)}</td>
-              <td>{num(r.p90_days)}</td>
+              <td>{displayCount(r.mean_days, "", NO_DATA)}</td>
+              <td>{displayCount(r.median_days, "", NO_DATA)}</td>
+              <td>{displayCount(r.p90_days, "", NO_DATA)}</td>
             </tr>
           ))}
         </tbody>

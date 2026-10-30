@@ -4,9 +4,16 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useSession, type Role } from "@/features/auth/session";
-import { prettyLabel } from "@/features/dashboards/components";
 import { validAcademicYear } from "@/features/submissions/data";
+import { CASE_PRIORITIES, CASE_SEVERITIES } from "@/features/cases/shared";
+import {
+  EnumSelect,
+  InstitutionSelect,
+  RegionSelect,
+} from "@/components/ui/filters";
 import { ApiError, errorMessage } from "@/lib/api/client";
+import { saveBlob } from "@/lib/download";
+import { DEMO_TAG, regionsOf } from "@/lib/format";
 import {
   useInstitutionOptions,
   type InstitutionPage,
@@ -146,12 +153,7 @@ function ReportCard({
     retry: false,
     onMutate: () => setStatus(""),
     onSuccess: ({ blob, filename }) => {
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      saveBlob({ blob, filename });
       setStatus(`Report downloaded: ${filename}`);
     },
   });
@@ -185,35 +187,17 @@ function ReportCard({
           />
         </label>
         {!fixedInstitution && (
-          <label>
-            Institution
-            <select
-              value={filters.institution}
-              onChange={(e) => set("institution", e.target.value)}
-            >
-              <option value="">All institutions</option>
-              {institutions.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <InstitutionSelect
+            institutions={institutions}
+            value={filters.institution}
+            onChange={(value) => set("institution", value)}
+          />
         )}
-        <label>
-          Region
-          <select
-            value={filters.region}
-            onChange={(e) => set("region", e.target.value)}
-          >
-            <option value="">All regions</option>
-            {regions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
+        <RegionSelect
+          regions={regions}
+          value={filters.region}
+          onChange={(value) => set("region", value)}
+        />
         <label>
           Programme code
           <input
@@ -225,34 +209,20 @@ function ReportCard({
         </label>
         {report.cases && (
           <>
-            <label>
-              Priority
-              <select
-                value={filters.priority}
-                onChange={(e) => set("priority", e.target.value)}
-              >
-                <option value="">Any priority</option>
-                {["LOW", "MEDIUM", "HIGH", "URGENT"].map((v) => (
-                  <option key={v} value={v}>
-                    {prettyLabel(v)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Severity
-              <select
-                value={filters.severity}
-                onChange={(e) => set("severity", e.target.value)}
-              >
-                <option value="">Any severity</option>
-                {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((v) => (
-                  <option key={v} value={v}>
-                    {prettyLabel(v)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <EnumSelect
+              label="Priority"
+              values={CASE_PRIORITIES}
+              value={filters.priority}
+              onChange={(value) => set("priority", value)}
+              allLabel="Any priority"
+            />
+            <EnumSelect
+              label="Severity"
+              values={CASE_SEVERITIES}
+              value={filters.severity}
+              onChange={(value) => set("severity", value)}
+              allLabel="Any severity"
+            />
           </>
         )}
         <label>
@@ -302,14 +272,10 @@ export function ReportCenter() {
   const search = useSearchParams();
   const role = session?.user.role;
   const fixedInstitution = role === "INSTITUTION_ADMIN";
-  const scope = ["private", session?.generation, session?.user.id, "reports"];
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions"],
-    !!session && !fixedInstitution,
-  );
+  const institutions = useInstitutionOptions(!!session && !fixedInstitution);
   if (!role) return null;
   const list = institutions.data?.data ?? [];
-  const regions = [...new Set(list.map((i) => i.region))].sort();
+  const regions = regionsOf(list);
   const year = search.get("academic_year") ?? "";
   const institution = search.get("institution_id") ?? "";
   const initial: Filters = {
@@ -330,7 +296,7 @@ export function ReportCenter() {
         <p>
           Download aggregate reports as CSV, Excel or PDF. Report totals
           reconcile with the analytics views for the same filters. Every report
-          is labelled <strong>SIMULATED / DEMO DATA</strong>: all records are
+          is labelled <strong>{DEMO_TAG}</strong>: all records are
           synthetic.
           {fixedInstitution && " Reports are limited to your institution."}
         </p>

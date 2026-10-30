@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { QueryBoundary } from "@/components/ui/feedback";
+import { EmptyState, QueryBoundary } from "@/components/ui/feedback";
 import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { errorMessage } from "@/lib/api/client";
+import { DEMO_TAG } from "@/lib/format";
 import type { components } from "@/lib/api/generated";
 import {
   credentialState,
@@ -20,8 +22,7 @@ type IssueResponse = components["schemas"]["IssueResponse"];
 const PAGE_SIZE = 20;
 
 function useCredentialScope() {
-  const { session } = useSession();
-  return ["private", session?.generation, session?.user.id, "credentials"];
+  return useScope("credentials");
 }
 
 function CredentialTable({
@@ -41,7 +42,7 @@ function CredentialTable({
       aria-label="Issued credentials"
     >
       <table className="review-table">
-        <caption>Issued credentials · SIMULATED / DEMO DATA</caption>
+        <caption>Issued credentials · {DEMO_TAG}</caption>
         <thead>
           <tr>
             <th scope="col">Credential</th>
@@ -101,22 +102,15 @@ function CredentialTable({
 }
 
 export function CredentialList() {
-  const { session, request } = useSession();
-  const scope = useCredentialScope();
   const [page, setPage] = useState(1);
-  const list = useQuery({
-    queryKey: [...scope, "list", page],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<CredentialPage>(
-        `/credentials?page=${page}&page_size=${PAGE_SIZE}`,
-        { signal },
-      ),
-  });
+  const list = useApiQuery<CredentialPage>(
+    useScope("credentials", "list", page),
+    `/credentials?page=${page}&page_size=${PAGE_SIZE}`,
+  );
   return (
     <>
       <div className="page-heading">
-        <p className="eyebrow">CREDENTIALS · SIMULATED / DEMO DATA</p>
+        <p className="eyebrow">{`CREDENTIALS · ${DEMO_TAG}`}</p>
         <h1>Admission credentials</h1>
         <p>
           Issued DEMO credentials. Tokens are shown only once at issue time and
@@ -133,13 +127,10 @@ export function CredentialList() {
         <QueryBoundary query={list} loading="Loading credentials…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No credentials issued</h3>
-                <p>
-                  Open a current, active record in the{" "}
-                  <Link href="/records">student registry</Link> to issue one.
-                </p>
-              </div>
+              <EmptyState title="No credentials issued">
+                Open a current, active record in the{" "}
+                <Link href="/records">student registry</Link> to issue one.
+              </EmptyState>
             ) : (
               <CredentialTable items={data.data} showRecord />
             )
@@ -259,7 +250,7 @@ export function RecordCredentialCard({
     <section className="panel" aria-labelledby="cred-card-title">
       <header className="panel-heading">
         <div>
-          <p className="eyebrow">SIMULATED / DEMO DATA</p>
+          <p className="eyebrow">{DEMO_TAG}</p>
           <h2 id="cred-card-title">Admission credential</h2>
         </div>
         <button
@@ -324,9 +315,7 @@ export function RecordCredentialCard({
       <QueryBoundary query={list} loading="Loading credentials…">
         {(data) =>
           data.items.length === 0 ? (
-            <div className="empty-state">
-              <h3>No credentials issued for this record</h3>
-            </div>
+            <EmptyState title="No credentials issued for this record" />
           ) : (
             <>
               <CredentialTable

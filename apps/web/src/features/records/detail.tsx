@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { EmptyState, ErrorPanel, Loading } from "@/components/ui/feedback";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { CaseBadges, statusLabel, statusTone } from "@/features/cases/shared";
 import { RecordCredentialCard } from "@/features/credentials/manage";
 import { isUUID } from "@/lib/api/client";
-import { when } from "@/lib/format";
+import { DEMO_TAG, plain, when } from "@/lib/format";
 import { StatusBadges, snapshotLabel, type RecordDetail } from "./shared";
 
 const verificationText: Record<string, string> = {
@@ -23,30 +23,20 @@ export function RecordDetailView({
 }: {
   recordVersionId: string;
 }) {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const officer = session?.user.role === "AICTE_OFFICER";
   const valid = isUUID(recordVersionId);
-  const query = useQuery({
-    queryKey: [
-      "private",
-      session?.generation,
-      session?.user.id,
-      "record",
-      recordVersionId,
-    ],
-    enabled: !!session && valid,
-    queryFn: ({ signal }) =>
-      request<RecordDetail>(`/records/${recordVersionId}`, { signal }),
-  });
+  const query = useApiQuery<RecordDetail>(
+    useScope("record", recordVersionId),
+    `/records/${recordVersionId}`,
+    { enabled: valid },
+  );
 
   if (!valid)
     return (
-      <div className="empty-state">
-        <h3>Record not found</h3>
-        <p>
-          <Link href="/records">Back to student registry</Link>
-        </p>
-      </div>
+      <EmptyState title="Record not found">
+        <Link href="/records">Back to student registry</Link>
+      </EmptyState>
     );
   if (query.isPending) return <Loading label="Loading record…" />;
   if (query.isError)
@@ -60,7 +50,7 @@ export function RecordDetailView({
     <>
       <div className="page-heading">
         <p className="eyebrow">
-          <Link href="/records">STUDENT REGISTRY</Link> · SIMULATED / DEMO DATA
+          <Link href="/records">STUDENT REGISTRY</Link> · {DEMO_TAG}
         </p>
         <h1>{r.student_name}</h1>
         <p>
@@ -170,10 +160,9 @@ export function RecordDetailView({
           <span className="quiet-label">{r.findings.length}</span>
         </header>
         {r.findings.length === 0 ? (
-          <div className="empty-state">
-            <h3>No findings</h3>
-            <p>No validation findings are recorded for this record version.</p>
-          </div>
+          <EmptyState title="No findings">
+            No validation findings are recorded for this record version.
+          </EmptyState>
         ) : (
           <ul className="finding-list">
             {r.findings.map((f) => (
@@ -186,7 +175,7 @@ export function RecordDetailView({
                     {f.severity}
                   </span>
                   <span className="status-badge neutral">
-                    {f.classification.replaceAll("_", " ")}
+                    {plain(f.classification)}
                   </span>
                 </span>
                 <p>{f.explanation}</p>
@@ -203,7 +192,7 @@ export function RecordDetailView({
       <section className="panel" aria-labelledby="ver-title">
         <header className="panel-heading">
           <div>
-            <p className="eyebrow">SIMULATED / DEMO DATA</p>
+            <p className="eyebrow">{DEMO_TAG}</p>
             <h2 id="ver-title">APAAR verification</h2>
           </div>
         </header>
@@ -234,10 +223,9 @@ export function RecordDetailView({
             </div>
           </dl>
         ) : (
-          <div className="empty-state">
-            <h3>None requested</h3>
-            <p>No simulated verification has been requested for this record.</p>
-          </div>
+          <EmptyState title="None requested">
+            No simulated verification has been requested for this record.
+          </EmptyState>
         )}
         <p className="data-note">
           This is a simulated result, not official APAAR verification.
@@ -258,9 +246,7 @@ export function RecordDetailView({
           <span className="quiet-label">{r.cases.length}</span>
         </header>
         {r.cases.length === 0 ? (
-          <div className="empty-state">
-            <h3>No related cases</h3>
-          </div>
+          <EmptyState title="No related cases" />
         ) : (
           <ul className="finding-list">
             {r.cases.map((c) => (
@@ -316,8 +302,8 @@ export function RecordDetailView({
                 <ul>
                   {h.changes.map((c) => (
                     <li key={c.field}>
-                      <strong>{c.field.replaceAll("_", " ")}</strong>:{" "}
-                      {c.previous ?? "empty"} → {c.current ?? "empty"}
+                      <strong>{plain(c.field)}</strong>: {c.previous ?? "empty"}{" "}
+                      → {c.current ?? "empty"}
                     </li>
                   ))}
                 </ul>

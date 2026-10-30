@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { QueryBoundary } from "@/components/ui/feedback";
+import { EmptyState, QueryBoundary } from "@/components/ui/feedback";
 import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
+import { DEMO_TAG } from "@/lib/format";
 import type { components } from "@/lib/api/generated";
 import { outcomeLabel, outcomeTone, when } from "./shared";
 
@@ -12,22 +13,17 @@ type LogPage = components["schemas"]["Page_VerificationLogEntry_"];
 const PAGE_SIZE = 20;
 
 export function VerificationLog() {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const [page, setPage] = useState(1);
   const officer = session?.user.role === "AICTE_OFFICER";
-  const log = useQuery({
-    queryKey: ["private", session?.generation, session?.user.id, "vlog", page],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<LogPage>(
-        `/credentials/verifications?page=${page}&page_size=${PAGE_SIZE}`,
-        { signal },
-      ),
-  });
+  const log = useApiQuery<LogPage>(
+    useScope("vlog", page),
+    `/credentials/verifications?page=${page}&page_size=${PAGE_SIZE}`,
+  );
   return (
     <>
       <div className="page-heading">
-        <p className="eyebrow">AUDIT · SIMULATED / DEMO DATA</p>
+        <p className="eyebrow">{`AUDIT · ${DEMO_TAG}`}</p>
         <h1>Verification log</h1>
         <p>
           {officer
@@ -46,10 +42,9 @@ export function VerificationLog() {
         <QueryBoundary query={log} loading="Loading verification log…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No verifications yet</h3>
-                <p>Checks you run appear here.</p>
-              </div>
+              <EmptyState title="No verifications yet">
+                Checks you run appear here.
+              </EmptyState>
             ) : (
               <div
                 className="table-scroll"

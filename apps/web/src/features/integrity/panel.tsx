@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   ErrorPanel,
@@ -12,9 +12,11 @@ import {
 } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { ScrollTable } from "@/features/intake/shared";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { humanize, when } from "@/lib/format";
 
 type Signals = components["schemas"]["SignalsResponse"];
 type Signal = components["schemas"]["Signal"];
@@ -59,7 +61,7 @@ export function severityTone(severity: string): string {
       : "neutral";
 }
 export const bandTone = severityTone;
-const title = (value: string) => value.charAt(0) + value.slice(1).toLowerCase();
+const title = humanize;
 
 export function Disclaimer({ text }: { text: string }) {
   return (
@@ -236,15 +238,7 @@ function SignalItem({
       {signal.decision && (
         <p className="cell-note">
           Latest decision: {decisionLabel(signal.decision)}
-          {signal.decision_at && (
-            <>
-              {" "}
-              on{" "}
-              <time dateTime={signal.decision_at}>
-                {new Date(signal.decision_at).toLocaleString()}
-              </time>
-            </>
-          )}
+          {signal.decision_at && <> on {when(signal.decision_at)}</>}
         </p>
       )}
       {onDecide && (
@@ -261,24 +255,11 @@ function SignalItem({
 }
 
 function DecisionHistory({ institutionId }: { institutionId: string }) {
-  const { session, request } = useSession();
   const [page, setPage] = useState(1);
-  const list = useQuery({
-    queryKey: [
-      "private",
-      session?.generation,
-      session?.user.id,
-      "integrity-decisions",
-      institutionId,
-      page,
-    ],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<DecisionPage>(
-        `/integrity/institutions/${institutionId}/decisions?page=${page}&page_size=10`,
-        { signal },
-      ),
-  });
+  const list = useApiQuery<DecisionPage>(
+    useScope("integrity-decisions", institutionId, page),
+    `/integrity/institutions/${institutionId}/decisions?page=${page}&page_size=10`,
+  );
   return (
     <div className="panel-padding">
       <h3>Decision history</h3>
@@ -302,11 +283,7 @@ function DecisionHistory({ institutionId }: { institutionId: string }) {
                 <tbody>
                   {data.data.map((d) => (
                     <tr key={d.id}>
-                      <td>
-                        <time dateTime={d.created_at}>
-                          {new Date(d.created_at).toLocaleString()}
-                        </time>
-                      </td>
+                      <td>{when(d.created_at)}</td>
                       <td>
                         <span className="code-label">{d.signal_key}</span>
                       </td>
@@ -340,28 +317,18 @@ export function IntegritySignalsPanel({
   institutionId: string;
   canDecide: boolean;
 }) {
-  const { session, request } = useSession();
+  const { request } = useSession();
   const queryClient = useQueryClient();
   const [target, setTarget] = useState<Signal | null>(null);
   const [decision, setDecision] = useState<Decision>("NEEDS_FOLLOW_UP");
   const [reason, setReason] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "integrity",
-    institutionId,
-  ];
-  const signals = useQuery({
-    queryKey: [...key, "signals"],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<Signals>(`/integrity/institutions/${institutionId}/signals`, {
-        signal,
-      }),
-  });
+  const key = useScope("integrity", institutionId);
+  const signals = useApiQuery<Signals>(
+    [...key, "signals"],
+    `/integrity/institutions/${institutionId}/signals`,
+  );
   const close = () => {
     setTarget(null);
     setReason("");

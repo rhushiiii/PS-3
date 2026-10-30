@@ -1,21 +1,27 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
-import { ErrorPanel, Loading, QueryBoundary } from "@/components/ui/feedback";
+import {
+  EmptyState,
+  ErrorPanel,
+  Loading,
+  QueryBoundary,
+} from "@/components/ui/feedback";
 import { QueryPagination } from "@/components/ui/pagination";
-import type { components, paths } from "@/lib/api/generated";
+import type { components } from "@/lib/api/generated";
 import { isUUID } from "@/lib/api/client";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
+import { plain } from "@/lib/format";
 import { DeclaredTotalsPanel } from "@/features/intake/declarations-panel";
 import { IntegritySignalsPanel } from "@/features/integrity/panel";
 import { IntakeRulesPanel } from "@/features/intake/rules-panel";
 import { SimulatorPanel } from "@/features/intake/simulator-panel";
+import type { Programmes } from "@/features/submissions/data";
 
 type Institution = components["schemas"]["InstitutionResponse"];
-type Programmes =
-  paths["/api/v1/institutions/{institution_id}/programmes"]["get"]["responses"][200]["content"]["application/json"];
 
 export function InstitutionProfile({
   institutionId,
@@ -25,22 +31,12 @@ export function InstitutionProfile({
   const { session, request } = useSession();
   const [page, setPage] = useState(1);
   const valid = isUUID(institutionId);
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "institution",
-    institutionId,
-  ];
-  const institution = useQuery({
-    queryKey: key,
-    enabled: !!session && valid,
-    queryFn: ({ signal }) =>
-      request<Institution>(
-        `/institutions/${encodeURIComponent(institutionId)}`,
-        { signal },
-      ),
-  });
+  const key = useScope("institution", institutionId);
+  const institution = useApiQuery<Institution>(
+    key,
+    `/institutions/${encodeURIComponent(institutionId)}`,
+    { enabled: valid },
+  );
   const programmes = useQuery({
     queryKey: [...key, "programmes", page],
     enabled: !!session && valid && !!institution.data,
@@ -101,7 +97,7 @@ export function InstitutionProfile({
               </section>
               <section className="metadata-item">
                 <span className="tiny-label">REGION</span>
-                <strong>{data.region.replaceAll("_", " ")}</strong>
+                <strong>{plain(data.region)}</strong>
               </section>
               <section className="metadata-item">
                 <span className="tiny-label">DATA CONTEXT</span>
@@ -135,12 +131,9 @@ export function InstitutionProfile({
                   retry={() => void programmes.refetch()}
                 />
               ) : programmes.data.data.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No programmes found</h3>
-                  <p>
-                    No programme records are available for this institution.
-                  </p>
-                </div>
+                <EmptyState title="No programmes found">
+                  No programme records are available for this institution.
+                </EmptyState>
               ) : (
                 <div
                   className="table-scroll"

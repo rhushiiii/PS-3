@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { QueryBoundary, FilterOptionsError } from "@/components/ui/feedback";
+import {
+  EmptyState,
+  QueryBoundary,
+  FilterOptionsError,
+} from "@/components/ui/feedback";
+import { InstitutionSelect } from "@/components/ui/filters";
 import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useFilterState, useScope } from "@/lib/api/hooks";
+import { DEMO_TAG } from "@/lib/format";
 import type { components } from "@/lib/api/generated";
 import {
   StatusBadges,
@@ -40,56 +46,46 @@ const NO_FILTERS: Filters = {
 const PAGE_SIZE = 20;
 
 export function RecordRegistry() {
-  const { session, request } = useSession();
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const { session } = useSession();
   const [page, setPage] = useState(1);
   const officer = session?.user.role === "AICTE_OFFICER";
-  const scope = ["private", session?.generation, session?.user.id];
+  const { filters, setFilters, update, reset } = useFilterState<Filters>(
+    NO_FILTERS,
+    () => setPage(1),
+  );
   const hasFilters = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
-  const update = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-    setPage(1);
-  };
   const programmeInstitution = officer
     ? filters.institution
     : (session?.user.institution_id ?? "");
 
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions", "filter-options"],
-    !!session && officer,
+  const institutions = useInstitutionOptions(!!session && officer);
+  const programmes = useApiQuery<ProgrammePage>(
+    useScope("programmes", programmeInstitution),
+    `/institutions/${programmeInstitution}/programmes?page=1&page_size=100`,
+    { enabled: !!programmeInstitution },
   );
-  const programmes = useQuery({
-    queryKey: [...scope, "programmes", programmeInstitution],
-    enabled: !!session && !!programmeInstitution,
-    queryFn: ({ signal }) =>
-      request<ProgrammePage>(
-        `/institutions/${programmeInstitution}/programmes?page=1&page_size=100`,
-        { signal },
-      ),
-  });
 
-  const records = useQuery({
-    queryKey: [...scope, "records", filters, page],
-    enabled: !!session,
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: String(PAGE_SIZE),
-      });
-      const q = filters.q.trim();
-      if (q) params.set("q", q);
-      if (officer && filters.institution)
-        params.set("institution_id", filters.institution);
-      if (filters.programme) params.set("programme_id", filters.programme);
-      if (filters.year.trim()) params.set("academic_year", filters.year.trim());
-      if (filters.enrollment.trim())
-        params.set("enrollment_status", filters.enrollment.trim());
-      if (filters.validation)
-        params.set("validation_status", filters.validation);
-      if (filters.candidates) params.set("include_candidates", "true");
-      return request<RecordPage>(`/records?${params}`, { signal });
-    },
-  });
+  const recordsPath = (() => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(PAGE_SIZE),
+    });
+    const q = filters.q.trim();
+    if (q) params.set("q", q);
+    if (officer && filters.institution)
+      params.set("institution_id", filters.institution);
+    if (filters.programme) params.set("programme_id", filters.programme);
+    if (filters.year.trim()) params.set("academic_year", filters.year.trim());
+    if (filters.enrollment.trim())
+      params.set("enrollment_status", filters.enrollment.trim());
+    if (filters.validation) params.set("validation_status", filters.validation);
+    if (filters.candidates) params.set("include_candidates", "true");
+    return `/records?${params}`;
+  })();
+  const records = useApiQuery<RecordPage>(
+    useScope("records", filters, page),
+    recordsPath,
+  );
 
   return (
     <>
@@ -97,9 +93,9 @@ export function RecordRegistry() {
         <p className="eyebrow">STUDENT REGISTRY</p>
         <h1>Student registry</h1>
         <p>
-          Student records from received submissions, with masked APAAR values.
-          SIMULATED / DEMO DATA: records are synthetic and local validation is
-          not official APAAR verification.
+          Student records from received submissions, with masked APAAR values.{" "}
+          {DEMO_TAG}: records are synthetic and local validation is not official
+          APAAR verification.
         </p>
       </div>
       <section className="panel" aria-labelledby="registry-title">
@@ -127,28 +123,20 @@ export function RecordRegistry() {
             />
           </label>
           {officer && (
-            <label className="inline-filter">
-              Institution
-              <select
-                value={filters.institution}
-                disabled={institutions.isPending}
-                onChange={(e) => {
-                  setFilters((c) => ({
-                    ...c,
-                    institution: e.target.value,
-                    programme: "",
-                  }));
-                  setPage(1);
-                }}
-              >
-                <option value="">All institutions</option>
-                {institutions.data?.data.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <InstitutionSelect
+              className="inline-filter"
+              institutions={institutions.data?.data ?? []}
+              value={filters.institution}
+              disabled={institutions.isPending}
+              onChange={(value) => {
+                setFilters((c) => ({
+                  ...c,
+                  institution: value,
+                  programme: "",
+                }));
+                setPage(1);
+              }}
+            />
           )}
           <label className="inline-filter">
             Programme
@@ -217,8 +205,7 @@ export function RecordRegistry() {
             className="button secondary small"
             disabled={!hasFilters}
             onClick={() => {
-              setFilters(NO_FILTERS);
-              setPage(1);
+              reset();
             }}
           >
             Clear filters
@@ -233,22 +220,16 @@ export function RecordRegistry() {
         <QueryBoundary query={records} loading="Loading records…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                {hasFilters ? (
-                  <>
-                    <h3>No records match these filters</h3>
-                    <p>Try removing a filter or clear all filters.</p>
-                  </>
-                ) : (
-                  <>
-                    <h3>No records yet</h3>
-                    <p>
-                      Records appear here once a submission has been received
-                      and its rows processed.
-                    </p>
-                  </>
-                )}
-              </div>
+              hasFilters ? (
+                <EmptyState title="No records match these filters">
+                  Try removing a filter or clear all filters.
+                </EmptyState>
+              ) : (
+                <EmptyState title="No records yet">
+                  Records appear here once a submission has been received and
+                  its rows processed.
+                </EmptyState>
+              )
             ) : (
               <div
                 className="table-scroll"
@@ -257,7 +238,7 @@ export function RecordRegistry() {
                 aria-label="Student records"
               >
                 <table className="review-table">
-                  <caption>Student records · SIMULATED / DEMO DATA</caption>
+                  <caption>Student records · {DEMO_TAG}</caption>
                   <thead>
                     <tr>
                       <th scope="col">Student</th>

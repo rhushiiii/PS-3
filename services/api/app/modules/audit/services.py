@@ -6,7 +6,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.core.http import not_found
-from app.core.pagination import Page, Pagination, count_rows, window
+from app.core.pagination import Page, paginate_rows
 from app.modules.audit.models import AuditEvent
 from app.modules.audit.schemas import AuditActor, AuditEventResponse, AuditFilters
 from app.modules.auth.models import Role, User
@@ -109,13 +109,8 @@ def list_events(
         statement = statement.where(AuditEvent.occurred_at >= filters.occurred_from)
     if filters.occurred_to is not None:
         statement = statement.where(AuditEvent.occurred_at <= filters.occurred_to)
-    total = count_rows(session, statement)
     ordered = statement.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
-    rows = session.execute(window(ordered, page, page_size))
-    return Page[AuditEventResponse](
-        data=[to_event(e, r, a) for e, r, a in rows],
-        pagination=Pagination(page=page, page_size=page_size, total=total),
-    )
+    return paginate_rows(session, ordered, to_event, page, page_size)
 
 
 def get_event(session: Session, event_id: UUID) -> AuditEventResponse:

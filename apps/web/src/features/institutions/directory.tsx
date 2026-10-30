@@ -2,37 +2,24 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useSession } from "@/features/auth/session";
-import { QueryBoundary } from "@/components/ui/feedback";
+import { EmptyState, QueryBoundary } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
 import { QueryPagination } from "@/components/ui/pagination";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
+import { plain } from "@/lib/format";
 import type { paths } from "@/lib/api/generated";
 
 type Institutions =
   paths["/api/v1/institutions"]["get"]["responses"][200]["content"]["application/json"];
 
 export function InstitutionDirectory() {
-  const { session, request } = useSession();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
-  const institutions = useQuery({
-    queryKey: [
-      "private",
-      session?.generation,
-      session?.user.id,
-      "institutions",
-      filter,
-      page,
-    ],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<Institutions>(
-        `/institutions?${new URLSearchParams({ q: filter, page: String(page), page_size: "10" })}`,
-        { signal },
-      ),
-  });
+  const institutions = useApiQuery<Institutions>(
+    useScope("institutions", filter, page),
+    `/institutions?${new URLSearchParams({ q: filter, page: String(page), page_size: "10" })}`,
+  );
   return (
     <>
       <div className="page-heading">
@@ -77,10 +64,9 @@ export function InstitutionDirectory() {
         <QueryBoundary query={institutions} loading="Loading institutions…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No matching institutions</h3>
-                <p>Try a different institution name.</p>
-              </div>
+              <EmptyState title="No matching institutions">
+                Try a different institution name.
+              </EmptyState>
             ) : (
               <div className="institution-list">
                 {data.data.map((institution) => (
@@ -97,7 +83,7 @@ export function InstitutionDirectory() {
                       <p>
                         {institution.permanent_id}{" "}
                         <span aria-hidden="true">·</span>{" "}
-                        {institution.region.replaceAll("_", " ")}
+                        {plain(institution.region)}
                       </p>
                     </div>
                     <Link

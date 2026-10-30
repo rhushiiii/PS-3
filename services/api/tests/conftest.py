@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 from collections.abc import Callable, Iterator
@@ -26,6 +28,7 @@ from app.modules.submissions.models import (
     SubmissionBatch,
     SubmissionScope,
 )
+from app.modules.submissions.parsing import HEADERS
 from app.modules.validation.services import get_validation_session
 from app.seed import seed_demo
 
@@ -208,3 +211,29 @@ def counts(session: Session) -> tuple[int, int, int]:
 def pin_clock(application: FastAPI, moment: datetime) -> None:
     """Freeze the `utc_now` request dependency at `moment`."""
     application.dependency_overrides[utc_now] = lambda: moment
+
+
+def admission_csv(*rows: dict[str, str]) -> bytes:
+    """Synthetic admission CSV; each dict overrides the canonical DEMO row."""
+    defaults = dict(
+        zip(
+            HEADERS,
+            [
+                "DEMO-ONE",
+                "Synthetic One",
+                "900000000001",
+                "2026-27",
+                "DEMO-COMP",
+                "REGULAR",
+                "ACTIVE",
+                "2026-08-01",
+            ],
+            strict=True,
+        )
+    )
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(HEADERS)
+    for row in rows:
+        writer.writerow({**defaults, **row}.values())
+    return output.getvalue().encode()

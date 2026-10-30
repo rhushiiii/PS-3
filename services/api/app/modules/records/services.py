@@ -7,12 +7,17 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.http import not_found
 from app.core.pagination import Page, Pagination, count_rows, window
+from app.core.query import latest_row
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
 from app.modules.cases.models import CaseRecord, ReviewCase
 from app.modules.cases.services import case_flags
 from app.modules.institutions.models import Institution, Programme
-from app.modules.institutions.services import scoped_institution, scoped_programme
+from app.modules.institutions.services import (
+    forced_institution_id,
+    scoped_institution,
+    scoped_programme,
+)
 from app.modules.records.schemas import (
     FieldChange,
     HistoryEntry,
@@ -123,10 +128,7 @@ def list_records(
     page_size: int,
 ) -> Page[RecordRow]:
     require_submission_role(user)
-    if user.role == Role.INSTITUTION_ADMIN:
-        if institution_id is not None and institution_id != user.institution_id:
-            raise not_found()
-        institution_id = user.institution_id
+    institution_id = forced_institution_id(user, institution_id)
     if institution_id is not None:
         scoped_institution(session, user, institution_id)
         if programme_id is not None:
@@ -323,10 +325,13 @@ def record_detail(
         presence = "IN_LATEST_SNAPSHOT" if in_latest else "NOT_IN_LATEST_SNAPSHOT"
 
     verification = session.scalar(
-        select(ApaarVerification)
-        .where(ApaarVerification.record_version_id == record.id)
-        .order_by(ApaarVerification.requested_at.desc(), ApaarVerification.id.desc())
-        .limit(1)
+        latest_row(
+            select(ApaarVerification).where(
+                ApaarVerification.record_version_id == record.id
+            ),
+            ApaarVerification.requested_at,
+            ApaarVerification.id,
+        )
     )
     summary = None
     if verification is not None:

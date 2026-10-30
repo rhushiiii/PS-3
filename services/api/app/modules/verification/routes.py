@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Request, Response
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse, no_store
+from app.core.http import error_responses, no_store
 from app.core.idempotency import IDEMPOTENCY_KEY_PATTERN
 from app.core.pagination import Page, PageNumber, PageSize, paginate_list
 from app.core.rate_limit import rate_limit
@@ -23,10 +23,7 @@ from app.modules.verification.services import (
 router = APIRouter(
     prefix="/api/v1/records",
     tags=["APAAR verification"],
-    responses={
-        code: {"model": ErrorResponse}
-        for code in (401, 403, 404, 409, 422, 429, 500, 503)
-    },
+    responses=error_responses(401, 403, 404, 409, 422, 429, 500, 503),
 )
 
 

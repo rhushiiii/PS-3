@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_snapshot_session
-from app.core.http import APIError, ErrorResponse, no_store
+from app.core.http import APIError, error_responses, no_store
 from app.core.pagination import PageNumber, PageSize
 from app.modules.auth.dependencies import (
     CurrentUser,
@@ -33,13 +33,7 @@ from app.modules.institutions.services import (
 router = APIRouter(
     prefix="/api/v1/institutions",
     tags=["Institutions"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 404, 422, 503),
 )
 
 

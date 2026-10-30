@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { errorMessage, isUUID } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { plain, when } from "@/lib/format";
 import { RecordVerification } from "./record-verification";
 import {
   CASE_PRIORITIES,
@@ -70,22 +72,19 @@ function toLocalInput(iso: string | null): string {
 }
 
 export function CaseDetail({ caseId }: { caseId: string }) {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const role = session?.user.role;
   const officer = role === "AICTE_OFFICER";
-  const scope = ["private", session?.generation, session?.user.id];
-  const caseKey = [...scope, "cases", caseId];
-  const caseQuery = useQuery({
-    queryKey: caseKey,
-    enabled: !!session && isUUID(caseId),
-    queryFn: ({ signal }) => request<Case>(`/cases/${caseId}`, { signal }),
+  const caseKey = useScope("cases", caseId);
+  const caseQuery = useApiQuery<Case>(caseKey, `/cases/${caseId}`, {
+    enabled: isUUID(caseId),
   });
-  const assignees = useQuery({
-    queryKey: [...scope, "cases", "assignees"],
-    enabled: !!session && officer,
-    queryFn: ({ signal }) =>
-      request<Assignee[]>("/cases/assignees", { signal }),
-  });
+  const assignees = useApiQuery<Assignee[]>(
+    useScope("cases", "assignees"),
+    "/cases/assignees",
+    { enabled: officer },
+  );
+  const casesScopeKey = useScope("cases");
 
   if (!isUUID(caseId))
     return (
@@ -116,7 +115,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
     <div className="case-detail-page">
       <div className="page-heading heading-actions">
         <div>
-          <p className="eyebrow">{item.category.replaceAll("_", " ")}</p>
+          <p className="eyebrow">{plain(item.category)}</p>
           <h1>
             Case review{" "}
             <span className={`status-badge ${statusTone(item.status)}`}>
@@ -159,13 +158,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
           <div>
             <dt>Due</dt>
             <dd>
-              {item.due_at ? (
-                <time dateTime={item.due_at}>
-                  {new Date(item.due_at).toLocaleString()}
-                </time>
-              ) : (
-                "No due date"
-              )}
+              {item.due_at ? when(item.due_at) : "No due date"}
               {item.is_overdue ? " (overdue)" : ""}
             </dd>
           </div>
@@ -232,9 +225,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
                 <span className={`status-badge ${eventTone(event.action)}`}>
                   {eventLabel(event.action)}
                 </span>
-                <time dateTime={event.created_at}>
-                  {new Date(event.created_at).toLocaleString()}
-                </time>
+                {when(event.created_at)}
               </header>
               {event.comment && <p>{event.comment}</p>}
               {event.linked_batch_id && (
@@ -255,7 +246,7 @@ export function CaseDetail({ caseId }: { caseId: string }) {
       <CaseActions
         item={item}
         caseKey={caseKey}
-        scopeKey={[...scope, "cases"]}
+        scopeKey={casesScopeKey}
         assignees={assignees.data}
         assigneesError={assignees.isError}
       />

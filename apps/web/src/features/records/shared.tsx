@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/generated";
+import { humanize, snapshotLabel } from "@/lib/format";
 
 type Schemas = components["schemas"];
 export type RecordRow = Schemas["RecordRow"];
@@ -12,10 +13,7 @@ export const VALIDATION_STATUSES: ValidationStatus[] = [
   "INCOMPLETE",
 ];
 
-export function snapshotLabel(state: SnapshotState): string {
-  if (state === "CURRENT") return "Current";
-  return state === "CANDIDATE" ? "Candidate" : "Superseded";
-}
+export { snapshotLabel };
 
 export function validationTone(status: RecordRow["validation_status"]) {
   if (status === "VALID") return "active";
@@ -24,7 +22,7 @@ export function validationTone(status: RecordRow["validation_status"]) {
 }
 
 export function validationLabel(status: RecordRow["validation_status"]) {
-  return status ? status.charAt(0) + status.slice(1).toLowerCase() : "Not run";
+  return status ? humanize(status) : "Not run";
 }
 
 export function StatusBadges({

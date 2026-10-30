@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
 import { errorMessage } from "@/lib/api/client";
+import { DEMO_TAG } from "@/lib/format";
 import type { components } from "@/lib/api/generated";
 import { DEMO_LABEL, outcomeLabel, when } from "./shared";
 
@@ -93,9 +94,7 @@ export function VerifyCredential() {
   return (
     <>
       <div className="page-heading">
-        <p className="eyebrow">
-          CREDENTIAL VERIFICATION · SIMULATED / DEMO DATA
-        </p>
+        <p className="eyebrow">{`CREDENTIAL VERIFICATION · ${DEMO_TAG}`}</p>
         <h1>Verify credential</h1>
         <p>
           Paste the credential token. A QR scanner usually outputs this text; a

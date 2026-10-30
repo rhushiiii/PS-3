@@ -6,14 +6,15 @@ from time import monotonic
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
 from app.core.http import APIError, not_found
+from app.core.pagination import count_rows
+from app.core.query import latest_per_key, latest_row
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
 from app.modules.institutions.models import IntakeRule, Programme
@@ -24,7 +25,7 @@ from app.modules.submissions.models import (
     SubmissionBatch,
     SubmissionScope,
 )
-from app.modules.submissions.services import row_response, scoped_batch
+from app.modules.submissions.services import batch_rows, row_response, scoped_batch
 from app.modules.validation.models import ValidationFinding, ValidationRun
 from app.modules.validation.rules import (
     CATEGORIES,
@@ -37,6 +38,17 @@ from app.modules.validation.rules import (
 from app.modules.validation.schemas import FindingResponse, RecordStatus, RunResponse
 
 get_validation_session = get_snapshot_session
+
+
+def matching_key(settings: Settings) -> bytes:
+    secret = settings.apaar_matching_key
+    if secret is None or len(secret.get_secret_value().encode()) < 32:
+        raise APIError(
+            422,
+            "MATCHING_CONFIGURATION_UNAVAILABLE",
+            "APAAR matching requires an environment key of at least 32 bytes",
+        )
+    return secret.get_secret_value().encode()
 
 
 def scope_map(session: Session, year: str) -> dict[str, Any]:
@@ -60,9 +72,7 @@ def selected_run(
     if run_id is not None:
         query = query.where(ValidationRun.id == run_id)
     run = session.scalar(
-        query.order_by(
-            ValidationRun.completed_at.desc(), ValidationRun.id.desc()
-        ).limit(1)
+        latest_row(query, ValidationRun.completed_at, ValidationRun.id)
     )
     if run is None and run_id is not None:
         raise not_found()
@@ -74,14 +84,14 @@ def selected_runs_bulk(session: Session, batch_ids: list[UUID]) -> dict[UUID, UU
     return {
         batch_id: run_id
         for batch_id, run_id in session.execute(
-            select(ValidationRun.batch_id, ValidationRun.id)
-            .where(ValidationRun.batch_id.in_(batch_ids))
-            .order_by(
-                ValidationRun.batch_id,
-                ValidationRun.completed_at.desc(),
-                ValidationRun.id.desc(),
+            latest_per_key(
+                select(ValidationRun.batch_id, ValidationRun.id).where(
+                    ValidationRun.batch_id.in_(batch_ids)
+                ),
+                key=[ValidationRun.batch_id],
+                stamp=ValidationRun.completed_at,
+                tie=ValidationRun.id,
             )
-            .ext(distinct_on(ValidationRun.batch_id))
         )
     }
 
@@ -129,20 +139,20 @@ def findings_for(session: Session, run: ValidationRun) -> list[ValidationFinding
     )
 
 
+def affected_record_ids(finding: ValidationFinding) -> list[UUID]:
+    """A direct record takes precedence over group evidence; batch-only is empty."""
+    if finding.record_version_id:
+        return [finding.record_version_id]
+    return [
+        UUID(value)
+        for value in finding.evidence_json_redacted.get("affected_record_ids", [])
+    ]
+
+
 def record_statuses(findings: list[ValidationFinding]) -> dict[UUID, RecordStatus]:
     result: dict[UUID, RecordStatus] = {}
     for finding in findings:
-        affected = (
-            [finding.record_version_id]
-            if finding.record_version_id
-            else [
-                UUID(value)
-                for value in finding.evidence_json_redacted.get(
-                    "affected_record_ids", []
-                )
-            ]
-        )
-        for record_id in affected:
+        for record_id in affected_record_ids(finding):
             if finding.rule_code == "REQUIRED_FIELD_MISSING":
                 result[record_id] = "INCOMPLETE"
             elif result.get(record_id) != "INCOMPLETE":
@@ -171,6 +181,36 @@ def finding_response(
         evaluated_at=run.evaluated_at,
         cross_current_freshness=run.cross_current_freshness,
     )
+
+
+def ruleset_snapshot(
+    settings: Settings,
+    programme: Programme,
+    batch: SubmissionBatch,
+    intake: list[IntakeRule],
+) -> dict[str, Any]:
+    return {
+        "ruleset_version": RULESET_VERSION,
+        "structural_ruleset_version": STRUCTURAL_RULESET_VERSION,
+        "source_label": "DEMO",
+        "apaar_ascii_digit_length": settings.apaar_format_length,
+        "matching_algorithm": "HMAC-SHA256",
+        "categories": list(CATEGORIES),
+        "enrollment_statuses": list(STATUSES),
+        "intake_rule_version": settings.validation_intake_rule_version,
+        "programme_code": programme.code,
+        "academic_year": batch.academic_year,
+        "intake_rules": [
+            {
+                "id": str(rule.id),
+                "category": rule.category.value,
+                "approved_seats": rule.approved_seats,
+                "rule_version": rule.rule_version,
+                "source_label": rule.source_label,
+            }
+            for rule in intake
+        ],
+    }
 
 
 def validate_candidate(
@@ -208,22 +248,10 @@ def validate_candidate(
             raise APIError(
                 409, "VALIDATION_ALREADY_PERFORMED", "Initial validation already exists"
             )
-        secret = settings.apaar_matching_key
-        if secret is None or len(secret.get_secret_value().encode()) < 32:
-            raise APIError(
-                422,
-                "MATCHING_CONFIGURATION_UNAVAILABLE",
-                "APAAR matching requires an environment key of at least 32 bytes",
-            )
+        key = matching_key(settings)
         programme = session.get(Programme, batch.programme_id)
         assert programme is not None
-        rows = list(
-            session.scalars(
-                select(StudentRecordVersion)
-                .where(StudentRecordVersion.batch_id == batch.id)
-                .order_by(StudentRecordVersion.source_row_number)
-            )
-        )
+        rows = batch_rows(session, batch.id)
         if len(rows) != batch.row_count:
             raise APIError(
                 409,
@@ -261,12 +289,7 @@ def validate_candidate(
             )
         )
         # Count first; never silently truncate a comparison or report false zeroes.
-        peer_count = (
-            session.scalar(
-                select(func.count()).select_from(peer_query.order_by(None).subquery())
-            )
-            or 0
-        )
+        peer_count = count_rows(session, peer_query)
         if peer_count > settings.validation_max_comparison_records:
             raise APIError(
                 422, "VALIDATION_LIMIT_EXCEEDED", "Comparison record limit exceeded"
@@ -284,7 +307,7 @@ def validate_candidate(
                 )
             ),
             current,
-            key=secret.get_secret_value().encode(),
+            key=key,
             format_length=settings.apaar_format_length,
             check_budget=check_budget,
         )
@@ -317,28 +340,7 @@ def validate_candidate(
             evaluated_at=evaluated_at,
             completed_at=datetime.now(UTC),
             ruleset_version=RULESET_VERSION,
-            ruleset_snapshot_json={
-                "ruleset_version": RULESET_VERSION,
-                "structural_ruleset_version": STRUCTURAL_RULESET_VERSION,
-                "source_label": "DEMO",
-                "apaar_ascii_digit_length": settings.apaar_format_length,
-                "matching_algorithm": "HMAC-SHA256",
-                "categories": list(CATEGORIES),
-                "enrollment_statuses": list(STATUSES),
-                "intake_rule_version": settings.validation_intake_rule_version,
-                "programme_code": programme.code,
-                "academic_year": batch.academic_year,
-                "intake_rules": [
-                    {
-                        "id": str(rule.id),
-                        "category": rule.category.value,
-                        "approved_seats": rule.approved_seats,
-                        "rule_version": rule.rule_version,
-                        "source_label": rule.source_label,
-                    }
-                    for rule in intake
-                ],
-            },
+            ruleset_snapshot_json=ruleset_snapshot(settings, programme, batch, intake),
             compared_scope_revisions_json=compared,
             summary_json=summary,
         )
@@ -451,16 +453,7 @@ def feedback_csv(
     by_record: dict[UUID, list[ValidationFinding]] = {}
     batch_findings = []
     for finding in findings:
-        affected = (
-            [finding.record_version_id]
-            if finding.record_version_id
-            else [
-                UUID(value)
-                for value in finding.evidence_json_redacted.get(
-                    "affected_record_ids", []
-                )
-            ]
-        )
+        affected = affected_record_ids(finding)
         if not affected:
             batch_findings.append(finding)
         for record_id in affected:

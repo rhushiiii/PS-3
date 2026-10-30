@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.database import Base
 from app.core.http import not_found
 from app.core.pagination import paginate as paginate
 from app.core.pagination import paginate_list
@@ -15,16 +17,46 @@ if TYPE_CHECKING:
     from app.modules.institutions.schemas import InstitutionSummary
 
 
+def scoped_entity[Model: Base](
+    session: Session,
+    user: User,
+    model: type[Model],
+    entity_id: UUID,
+    gate: "Callable[[User], None]",
+    *,
+    owner_attr: str = "institution_id",
+) -> Model:
+    """Fetch an entity under the shared 404: missing and out-of-scope look alike."""
+    gate(user)
+    entity = session.get(model, entity_id)
+    if entity is None or (
+        user.role == Role.INSTITUTION_ADMIN
+        and getattr(entity, owner_attr) != user.institution_id
+    ):
+        raise not_found()
+    return entity
+
+
 def scoped_institution(
     session: Session, user: User, institution_id: UUID
 ) -> Institution:
-    require_metadata_role(user)
-    if user.role == Role.INSTITUTION_ADMIN and user.institution_id != institution_id:
+    return scoped_entity(
+        session,
+        user,
+        Institution,
+        institution_id,
+        require_metadata_role,
+        owner_attr="id",
+    )
+
+
+def forced_institution_id(user: User, requested: UUID | None) -> UUID | None:
+    """Admins always see their own institution; a foreign id is a 404, never a leak."""
+    if user.role != Role.INSTITUTION_ADMIN:
+        return requested
+    if requested is not None and requested != user.institution_id:
         raise not_found()
-    institution = session.get(Institution, institution_id)
-    if institution is None:
-        raise not_found()
-    return institution
+    return user.institution_id
 
 
 def scoped_programme(

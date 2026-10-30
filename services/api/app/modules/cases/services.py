@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, exists, not_, select
+from sqlalchemy import exists, not_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.http import APIError, not_found
-from app.core.pagination import count_rows, window
+from app.core.pagination import Page, paginate_rows
 from app.modules.audit.services import record_action
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
@@ -19,6 +19,7 @@ from app.modules.cases.models import (
     CaseSeverity,
     CaseStatus,
     ReviewCase,
+    overdue_clause,
 )
 from app.modules.cases.schemas import (
     AssigneeResponse,
@@ -27,6 +28,7 @@ from app.modules.cases.schemas import (
     CaseEventResponse,
     CaseResponse,
 )
+from app.modules.institutions.services import forced_institution_id, scoped_entity
 from app.modules.notifications.models import NotificationKind
 from app.modules.notifications.services import (
     institution_admin_ids,
@@ -104,15 +106,7 @@ def require_case_role(user: User, *, writing: bool = False) -> None:
 
 
 def scoped_case(session: Session, user: User, case_id: UUID) -> ReviewCase:
-    require_case_role(user)
-    case = session.get(ReviewCase, case_id)
-    if case is None:
-        raise not_found()
-    if user.role == Role.INSTITUTION_ADMIN and case.institution_id != (
-        user.institution_id
-    ):
-        raise not_found()
-    return case
+    return scoped_entity(session, user, ReviewCase, case_id, require_case_role)
 
 
 def case_flags(
@@ -375,17 +369,18 @@ def list_cases(
     session: Session,
     user: User,
     filters: CaseFilters,
+    settings: Settings,
     page: int,
     page_size: int,
-) -> tuple[list[ReviewCase], int]:
+) -> Page[CaseResponse]:
     require_case_role(user)
     now = datetime.now(UTC)
     statement = select(ReviewCase)
-    if user.role == Role.INSTITUTION_ADMIN:
-        statement = statement.where(ReviewCase.institution_id == user.institution_id)
-    # An admin asking for another institution simply matches nothing (no leak).
+    # An admin asking for another institution gets the shared 404 (no leak).
+    institution_id = forced_institution_id(user, filters.institution_id)
+    if institution_id is not None:
+        statement = statement.where(ReviewCase.institution_id == institution_id)
     equality = (
-        (ReviewCase.institution_id, filters.institution_id),
         (ReviewCase.status, filters.status),
         (ReviewCase.severity, filters.severity),
         (ReviewCase.priority, filters.priority),
@@ -403,19 +398,20 @@ def list_cases(
             )
         )
     if filters.overdue is not None:
-        is_overdue = and_(
-            ReviewCase.due_at.is_not(None),
-            ReviewCase.due_at < now,
-            ReviewCase.status.not_in(CLOSED_STATUSES),
-        )
+        is_overdue = overdue_clause(now)
         statement = statement.where(is_overdue if filters.overdue else not_(is_overdue))
     if filters.min_age_days is not None:
         statement = statement.where(
             ReviewCase.opened_at <= now - timedelta(days=filters.min_age_days)
         )
-    total = count_rows(session, statement)
     ordered = statement.order_by(ReviewCase.opened_at.desc(), ReviewCase.id.desc())
-    return list(session.scalars(window(ordered, page, page_size))), total
+    return paginate_rows(
+        session,
+        ordered,
+        lambda case: case_response(session, case, settings),
+        page,
+        page_size,
+    )
 
 
 def record_correction_received(session: Session, batch: SubmissionBatch) -> None:

@@ -6,9 +6,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { ApiError, errorMessage, isUUID } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
-import { humanize } from "@/lib/format";
+import {
+  displayCount,
+  humanize,
+  valueObject,
+  countValue,
+  when,
+} from "@/lib/format";
 
 type Batch = components["schemas"]["BatchResponse"];
 type Run = components["schemas"]["RunResponse"];
@@ -18,25 +25,10 @@ type ObjectValue = Record<string, unknown>;
 
 const omissionPageSize = 20;
 
-function object(value: unknown): ObjectValue | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as ObjectValue)
-    : null;
-}
-
-function integer(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) ? value : null;
-}
-
-function count(value: unknown): string {
-  const result = integer(value);
-  return result === null ? "Unavailable" : result.toLocaleString();
-}
-
 const label = humanize;
 
 function nestedCount(value: unknown, key: string): unknown {
-  return object(value)?.[key];
+  return valueObject(value)?.[key];
 }
 
 function valueString(value: unknown): string {
@@ -81,7 +73,7 @@ function CountCard({
   return (
     <div className="review-count-card">
       <span>{title}</span>
-      <strong>{count(value)}</strong>
+      <strong>{displayCount(value)}</strong>
       {note && <small>{note}</small>}
     </div>
   );
@@ -97,12 +89,12 @@ function CountComparison({
   delta: ObjectValue | null;
 }) {
   if (!candidate) return <p>Candidate comparison is unavailable.</p>;
-  const categoriesCurrent = object(current?.categories);
-  const categoriesCandidate = object(candidate.categories);
-  const categoryDeltas = object(delta?.categories);
+  const categoriesCurrent = valueObject(current?.categories);
+  const categoriesCandidate = valueObject(candidate.categories);
+  const categoryDeltas = valueObject(delta?.categories);
   const categories = Object.keys(categoriesCandidate ?? {});
-  const statusesCurrent = object(current?.statuses);
-  const statusesCandidate = object(candidate.statuses);
+  const statusesCurrent = valueObject(current?.statuses);
+  const statusesCandidate = valueObject(candidate.statuses);
   const statuses = Object.keys(statusesCandidate ?? {});
   return (
     <>
@@ -130,26 +122,26 @@ function CountComparison({
             </thead>
             <tbody>
               {categories.map((key) => {
-                const before = object(categoriesCurrent?.[key]);
-                const after = object(categoriesCandidate?.[key]);
-                const change = object(categoryDeltas?.[key]);
+                const before = valueObject(categoriesCurrent?.[key]);
+                const after = valueObject(categoriesCandidate?.[key]);
+                const change = valueObject(categoryDeltas?.[key]);
                 return (
                   <tr key={key}>
                     <th scope="row">{label(key)}</th>
                     <td>
                       {current
-                        ? count(before?.declared_records)
+                        ? displayCount(before?.declared_records)
                         : "No current snapshot"}
                     </td>
-                    <td>{count(after?.declared_records)}</td>
+                    <td>{displayCount(after?.declared_records)}</td>
                     <td>
                       {current
-                        ? count(before?.demo_active_records)
+                        ? displayCount(before?.demo_active_records)
                         : "No current snapshot"}
                     </td>
-                    <td>{count(after?.demo_active_records)}</td>
-                    <td>{count(change?.declared_records)}</td>
-                    <td>{count(change?.demo_active_records)}</td>
+                    <td>{displayCount(after?.demo_active_records)}</td>
+                    <td>{displayCount(change?.declared_records)}</td>
+                    <td>{displayCount(change?.demo_active_records)}</td>
                   </tr>
                 );
               })}
@@ -183,11 +175,11 @@ function CountComparison({
                   <th scope="row">{label(key)}</th>
                   <td>
                     {current
-                      ? count(statusesCurrent?.[key])
+                      ? displayCount(statusesCurrent?.[key])
                       : "No current snapshot"}
                   </td>
-                  <td>{count(statusesCandidate?.[key])}</td>
-                  <td>{count(nestedCount(delta?.statuses, key))}</td>
+                  <td>{displayCount(statusesCandidate?.[key])}</td>
+                  <td>{displayCount(nestedCount(delta?.statuses, key))}</td>
                 </tr>
               ))}
             </tbody>
@@ -234,23 +226,13 @@ export function ReviewActivation({
   );
   const [copyMessage, setCopyMessage] = useState("");
   const page = Math.max(1, omissionPage);
-  const baseKey = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "validation",
-    batch.id,
-  ];
-  const receiptKey = [...baseKey, "review", reviewId, page];
-  const receipt = useQuery({
-    queryKey: receiptKey,
-    enabled: !!session && isUUID(batch.id) && isUUID(reviewId),
-    queryFn: ({ signal }) =>
-      request<Review>(
-        `/submissions/${batch.id}/reviews/${reviewId}?page=${page}&page_size=${omissionPageSize}`,
-        { signal },
-      ),
-  });
+  const baseKey = useScope("validation", batch.id);
+  const receiptPath = `/submissions/${batch.id}/reviews/${reviewId}?page=${page}&page_size=${omissionPageSize}`;
+  const receipt = useApiQuery<Review>(
+    [...baseKey, "review", reviewId, page],
+    receiptPath,
+    { enabled: isUUID(batch.id) && isUUID(reviewId) },
+  );
   const pinnedRunId = receipt.data?.validation_run_id ?? run.id;
   const runFindings = useQuery({
     queryKey: [...baseKey, "review-findings", pinnedRunId],
@@ -311,7 +293,7 @@ export function ReviewActivation({
           confirm_complete_replacement: true,
           acknowledge_review_warnings: true,
           acknowledge_omissions:
-            integer(receipt.data.snapshot.omitted_record_count)! > 0
+            countValue(receipt.data.snapshot.omitted_record_count)! > 0
               ? omissionsAcknowledged
               : false,
         }),
@@ -376,8 +358,11 @@ export function ReviewActivation({
         ),
       ]);
       queryClient.setQueryData([...baseKey, "batch"], freshBatch);
-      queryClient.setQueryData(receiptKey, freshReceipt);
-      const provenance = object(freshBatch.activation_provenance);
+      queryClient.setQueryData(
+        [...baseKey, "review", reviewId, page, receiptPath],
+        freshReceipt,
+      );
+      const provenance = valueObject(freshBatch.activation_provenance);
       const activatedByThisReceipt =
         freshBatch.activation_review_id === receipt.data.id ||
         provenance?.review_id === receipt.data.id ||
@@ -392,11 +377,11 @@ export function ReviewActivation({
           validation_run_id: freshReceipt.validation_run_id,
           previous_batch_id: freshReceipt.expected_current_batch_id,
           scope_revision:
-            integer(provenance?.scope_revision) ??
+            countValue(provenance?.scope_revision) ??
             freshReceipt.expected_scope_revision + 1,
           activated_by: freshReceipt.reviewed_by,
           activated_at: freshBatch.activated_at,
-          counts: object(freshReceipt.snapshot.candidate_counts) ?? {},
+          counts: valueObject(freshReceipt.snapshot.candidate_counts) ?? {},
           source_label: "DEMO",
         });
         setStatus(
@@ -521,10 +506,10 @@ export function ReviewActivation({
 
   const data = receipt.data;
   const snapshot = data.snapshot;
-  const current = object(snapshot.current_counts);
-  const candidate = object(snapshot.candidate_counts);
-  const delta = object(snapshot.delta_counts);
-  const eligibility = object(data.eligibility);
+  const current = valueObject(snapshot.current_counts);
+  const candidate = valueObject(snapshot.candidate_counts);
+  const delta = valueObject(snapshot.delta_counts);
+  const eligibility = valueObject(data.eligibility);
   const blockingRules = Array.isArray(eligibility?.structural_blocking_rules)
     ? eligibility.structural_blocking_rules.filter(
         (item): item is string => typeof item === "string",
@@ -536,8 +521,8 @@ export function ReviewActivation({
       )
     : [];
   const comparisonComplete = snapshot.identifier_comparison === "COMPLETE";
-  const omittedCount = integer(snapshot.omitted_record_count);
-  const activeOmittedCount = integer(
+  const omittedCount = countValue(snapshot.omitted_record_count);
+  const activeOmittedCount = countValue(
     snapshot.previously_active_omitted_record_count,
   );
   const hasOmissions = omittedCount !== null && omittedCount > 0;
@@ -561,7 +546,7 @@ export function ReviewActivation({
     const rows = snapshot[key];
     return Array.isArray(rows)
       ? rows.flatMap((entry) => {
-          const item = object(entry);
+          const item = valueObject(entry);
           if (
             !item ||
             typeof item.from !== "string" ||
@@ -569,12 +554,12 @@ export function ReviewActivation({
           )
             return [];
           return [
-            `${item.from} → ${item.to}: ${count(item.records)} record${item.records === 1 ? "" : "s"}`,
+            `${item.from} → ${item.to}: ${displayCount(item.records)} record${item.records === 1 ? "" : "s"}`,
           ];
         })
       : [];
   };
-  const assessment = object(data.assessment_now);
+  const assessment = valueObject(data.assessment_now);
   const overlap = assessment?.current_overlap_records;
   const crossFreshness = assessment?.cross_current_freshness;
   const matchingAssessment = assessment?.matching_assessment;
@@ -636,11 +621,7 @@ export function ReviewActivation({
         </div>
         <div>
           <span>Review created</span>
-          <strong>
-            <time dateTime={data.created_at}>
-              {new Date(data.created_at).toLocaleString()}
-            </time>
-          </strong>
+          <strong>{when(data.created_at)}</strong>
           <small>Reviewer {data.reviewed_by}</small>
         </div>
         <div>
@@ -895,8 +876,8 @@ export function ReviewActivation({
           <div className="finding-classification reviewable">
             <strong>Reviewable findings</strong>
             <span>
-              {count(snapshot.reviewable_finding_count)} findings pinned to this
-              run
+              {displayCount(snapshot.reviewable_finding_count)} findings pinned
+              to this run
             </span>
             <p>
               Missing or malformed APAAR, possible overlaps, and comparisons
@@ -979,7 +960,7 @@ export function ReviewActivation({
               · scope revision{" "}
               {activationResult?.scope_revision ??
                 valueString(
-                  object(batch.activation_provenance)?.scope_revision,
+                  valueObject(batch.activation_provenance)?.scope_revision,
                 )}
             </span>
             <span>

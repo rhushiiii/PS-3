@@ -5,12 +5,26 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { DeclaredTotalsPanel } from "@/features/intake/declarations-panel";
 import { IntegritySignalsPanel } from "@/features/integrity/panel";
 import { SimulatorPanel } from "@/features/intake/simulator-panel";
-import { validAcademicYear } from "@/features/submissions/data";
+import {
+  History,
+  Programmes,
+  validAcademicYear,
+} from "@/features/submissions/data";
+import { CasePage } from "@/features/cases/shared";
 import { isUUID } from "@/lib/api/client";
 import type { components, paths } from "@/lib/api/generated";
+import {
+  countValue,
+  displayCount,
+  snapshotLabel,
+  snapshotTone,
+  valueObject,
+  when,
+} from "@/lib/format";
 import {
   CategoryBars,
   CoverageBadge,
@@ -18,48 +32,27 @@ import {
   DashboardTable,
   MetricCard,
   StatusDonut,
-  countValue,
-  displayCount,
   prettyLabel,
-  valueObject,
 } from "./components";
 
 type Summary = components["schemas"]["InstitutionSummary"];
 type Institution = components["schemas"]["InstitutionResponse"];
-type Programmes =
-  paths["/api/v1/institutions/{institution_id}/programmes"]["get"]["responses"][200]["content"]["application/json"];
 type Intake =
   paths["/api/v1/institutions/{institution_id}/intake"]["get"]["responses"][200]["content"]["application/json"];
-type History =
-  paths["/api/v1/submissions"]["get"]["responses"][200]["content"]["application/json"];
-
-type CasePage =
-  paths["/api/v1/cases"]["get"]["responses"][200]["content"]["application/json"];
 
 const dashboardYear = "2026-27";
 
 function CorrectionRequestsCard() {
-  const { session, request } = useSession();
-  const key = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "correction-requests",
-  ];
-  const count = (overdue: boolean) =>
-    request<CasePage>(
-      `/cases?status=AWAITING_CORRECTION&page=1&page_size=1${overdue ? "&overdue=true" : ""}`,
-    );
-  const open = useQuery({
-    queryKey: [...key, "open"],
-    enabled: !!session,
-    queryFn: () => count(false),
-  });
-  const overdue = useQuery({
-    queryKey: [...key, "overdue"],
-    enabled: !!session,
-    queryFn: () => count(true),
-  });
+  const countPath = (overdue: boolean) =>
+    `/cases?status=AWAITING_CORRECTION&page=1&page_size=1${overdue ? "&overdue=true" : ""}`;
+  const open = useApiQuery<CasePage>(
+    useScope("correction-requests", "open"),
+    countPath(false),
+  );
+  const overdue = useApiQuery<CasePage>(
+    useScope("correction-requests", "overdue"),
+    countPath(true),
+  );
   return (
     <section
       className="panel dashboard-panel"
@@ -108,28 +101,17 @@ export function InstitutionDashboard({
   const [programmeId, setProgrammeId] = useState("");
   const [filterError, setFilterError] = useState("");
   const valid = isUUID(institutionId);
-  const baseKey = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "institution-dashboard",
-    institutionId,
-  ];
-  const institution = useQuery({
-    queryKey: [...baseKey, "metadata"],
-    enabled: !!session && valid,
-    queryFn: ({ signal }) =>
-      request<Institution>(`/institutions/${institutionId}`, { signal }),
-  });
-  const programmes = useQuery({
-    queryKey: [...baseKey, "programmes"],
-    enabled: !!session && valid,
-    queryFn: ({ signal }) =>
-      request<Programmes>(
-        `/institutions/${institutionId}/programmes?page=1&page_size=100`,
-        { signal },
-      ),
-  });
+  const baseKey = useScope("institution-dashboard", institutionId);
+  const institution = useApiQuery<Institution>(
+    [...baseKey, "metadata"],
+    `/institutions/${institutionId}`,
+    { enabled: valid },
+  );
+  const programmes = useApiQuery<Programmes>(
+    [...baseKey, "programmes"],
+    `/institutions/${institutionId}/programmes?page=1&page_size=100`,
+    { enabled: valid },
+  );
   const filtersValid = validAcademicYear(year);
   const filterParams = new URLSearchParams({
     academic_year: year,
@@ -584,11 +566,7 @@ export function InstitutionDashboard({
                 <tbody>
                   {submissions.data.data.map((batch) => (
                     <tr key={batch.id}>
-                      <td>
-                        <time dateTime={batch.received_at}>
-                          {new Date(batch.received_at).toLocaleString()}
-                        </time>
-                      </td>
+                      <td>{when(batch.received_at)}</td>
                       <td>
                         {programmeNames.get(batch.programme_id) ??
                           batch.programme_id}
@@ -596,9 +574,9 @@ export function InstitutionDashboard({
                       </td>
                       <td>
                         <span
-                          className={`status-badge ${batch.snapshot_state === "CURRENT" ? "active" : batch.snapshot_state === "PREVIOUS" ? "neutral" : "warning"}`}
+                          className={`status-badge ${snapshotTone(batch.snapshot_state)}`}
                         >
-                          {prettyLabel(batch.snapshot_state)}
+                          {snapshotLabel(batch.snapshot_state)}
                         </span>
                       </td>
                       <td>{prettyLabel(batch.status)}</td>

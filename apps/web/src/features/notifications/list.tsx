@@ -2,41 +2,38 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { QueryBoundary } from "@/components/ui/feedback";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { EmptyState, QueryBoundary } from "@/components/ui/feedback";
 import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { errorMessage } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { when } from "@/lib/format";
 
 type NotificationPage = components["schemas"]["Page_NotificationResponse_"];
 
 export function NotificationList() {
-  const { session, request } = useSession();
+  const { request } = useSession();
   const queryClient = useQueryClient();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const scope = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "notifications",
-  ];
+  const scope = useScope("notifications");
 
-  const list = useQuery({
-    queryKey: [...scope, "list", unreadOnly, page],
-    enabled: !!session,
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: "20",
-      });
-      if (unreadOnly) params.set("unread", "true");
-      return request<NotificationPage>(`/notifications?${params}`, { signal });
-    },
-  });
+  const listPath = (() => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: "20",
+    });
+    if (unreadOnly) params.set("unread", "true");
+    return `/notifications?${params}`;
+  })();
+  const list = useApiQuery<NotificationPage>(
+    [...scope, "list", unreadOnly, page],
+    listPath,
+  );
 
   const mark = useMutation({
     mutationFn: (id: string | "all") =>
@@ -109,16 +106,15 @@ export function NotificationList() {
         <QueryBoundary query={list} loading="Loading notifications…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>
-                  {unreadOnly ? "No unread notifications" : "Nothing here yet"}
-                </h3>
-                <p>
-                  {unreadOnly
-                    ? "You are all caught up."
-                    : "Notifications appear when a case is assigned, a correction is requested or a case is updated."}
-                </p>
-              </div>
+              <EmptyState
+                title={
+                  unreadOnly ? "No unread notifications" : "Nothing here yet"
+                }
+              >
+                {unreadOnly
+                  ? "You are all caught up."
+                  : "Notifications appear when a case is assigned, a correction is requested or a case is updated."}
+              </EmptyState>
             ) : (
               <ul className="institution-list" style={{ listStyle: "none" }}>
                 {data.data.map((item) => {
@@ -140,11 +136,7 @@ export function NotificationList() {
                           </span>
                         </h3>
                         <p>{item.body}</p>
-                        <p>
-                          <time dateTime={item.created_at}>
-                            {new Date(item.created_at).toLocaleString()}
-                          </time>
-                        </p>
+                        <p>{when(item.created_at)}</p>
                       </div>
                       <div className="notification-actions">
                         {item.case_id && (

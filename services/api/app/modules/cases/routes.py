@@ -3,8 +3,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from app.core.http import AppSettings, ErrorResponse, no_store
-from app.core.pagination import Page, PageNumber, PageSize, Pagination
+from app.core.http import AppSettings, error_responses, no_store
+from app.core.pagination import Page, PageNumber, PageSize
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.cases.models import CasePriority, CaseSeverity, CaseStatus
@@ -27,9 +27,7 @@ from app.modules.cases.services import (
 router = APIRouter(
     prefix="/api/v1/cases",
     tags=["Officer cases"],
-    responses={
-        code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)
-    },
+    responses=error_responses(401, 403, 404, 409, 422, 500, 503),
 )
 
 
@@ -78,12 +76,8 @@ def list_(
         overdue=overdue,
         min_age_days=min_age_days,
     )
-    items, total = list_cases(session, user, filters, page, page_size)
     no_store(response)
-    return Page[CaseResponse](
-        data=[case_response(session, item, settings) for item in items],
-        pagination=Pagination(page=page, page_size=page_size, total=total),
-    )
+    return list_cases(session, user, filters, settings, page, page_size)
 
 
 @router.get("/assignees", response_model=list[AssigneeResponse])

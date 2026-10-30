@@ -8,7 +8,7 @@ import { InstitutionsRequiringReview } from "@/features/integrity/overview-table
 import { useSession } from "@/features/auth/session";
 import { validAcademicYear } from "@/lib/academic-year";
 import { isUUID } from "@/lib/api/client";
-import type { components, paths } from "@/lib/api/generated";
+import type { components } from "@/lib/api/generated";
 import {
   CategoryBars,
   CoverageBadge,
@@ -21,13 +21,13 @@ import {
   prettyLabel,
   valueObject,
 } from "./components";
+import { regionsOf } from "@/lib/format";
+import { History } from "@/features/submissions/data";
 import { useInstitutionOptions } from "@/features/institutions/options";
 
 type Summary = components["schemas"]["InstitutionSummary"];
 type Run = components["schemas"]["RunResponse"];
 type Batch = components["schemas"]["BatchResponse"];
-type SubmissionPage =
-  paths["/api/v1/submissions"]["get"]["responses"][200]["content"]["application/json"];
 
 const dashboardYear = "2026-27";
 const historyPageSize = 100;
@@ -37,6 +37,68 @@ type AssessmentSummary = {
   note: string;
   tone: "active" | "warning" | "neutral";
 };
+
+/**
+ * Freshness precedence is load-bearing: history failure > loading > missing
+ * current snapshot > stale > incomplete > fresh.
+ */
+function freshnessSummary(
+  history: { isError: boolean; isPending: boolean } | undefined,
+  assessmentRows: Array<{ label?: string } | undefined>,
+  hasCurrent: boolean,
+): AssessmentSummary {
+  if (history?.isError)
+    return {
+      label: "Unavailable",
+      note: "History unavailable",
+      tone: "neutral",
+    };
+  if (history?.isPending)
+    return {
+      label: "Loading",
+      note: "Checking current snapshots",
+      tone: "neutral",
+    };
+  if (assessmentRows.length === 0)
+    return hasCurrent
+      ? {
+          label: "Unavailable",
+          note: "Summary and history do not identify a current batch",
+          tone: "neutral",
+        }
+      : {
+          label: "No current scope",
+          note: "No current declaration",
+          tone: "neutral",
+        };
+  if (assessmentRows.some((row) => row?.label === "Stale"))
+    return {
+      label: "Stale",
+      note: "At least one current assessment is stale",
+      tone: "warning",
+    };
+  if (
+    assessmentRows.some(
+      (row) => row?.label === "Incomplete" || row?.label === "Unavailable",
+    )
+  )
+    return {
+      label: "Incomplete / unavailable",
+      note: "At least one current comparison is incomplete",
+      tone: "warning",
+    };
+  if (assessmentRows.some((row) => row?.label === "Loading"))
+    return {
+      label: "Loading",
+      note: "Checking current assessments",
+      tone: "neutral",
+    };
+  return {
+    label: "Fresh",
+    note: "All available current assessments are fresh",
+    tone: "active",
+  };
+}
 
 export function AicteDashboard() {
   const { session, request } = useSession();
@@ -57,13 +119,10 @@ export function AicteDashboard() {
     "aicte-dashboard",
   ];
   const institutions = useInstitutionOptions(
-    [...baseKey, "institutions"],
     !!session && (isOfficer || isManager),
   );
   const allInstitutions = institutions.data?.data ?? [];
-  const regions = [
-    ...new Set(allInstitutions.map((item) => item.region)),
-  ].sort();
+  const regions = regionsOf(allInstitutions);
   const visibleInstitutions = allInstitutions.filter(
     (item) =>
       (!region || item.region === region) &&
@@ -91,7 +150,7 @@ export function AicteDashboard() {
             let page = 1;
             let total = Number.POSITIVE_INFINITY;
             while (collected.length < total) {
-              const result = await request<SubmissionPage>(
+              const result = await request<History>(
                 `/submissions?${new URLSearchParams({ institution_id: item.id, academic_year: year, page: String(page), page_size: String(historyPageSize) })}`,
                 { signal },
               );
@@ -531,59 +590,7 @@ export function AicteDashboard() {
                       );
                       const freshness = !isOfficer
                         ? null
-                        : history?.isError
-                          ? {
-                              label: "Unavailable",
-                              note: "History unavailable",
-                              tone: "neutral" as const,
-                            }
-                          : history?.isPending
-                            ? {
-                                label: "Loading",
-                                note: "Checking current snapshots",
-                                tone: "neutral" as const,
-                              }
-                            : currentForInstitution.length === 0
-                              ? {
-                                  label: current
-                                    ? "Unavailable"
-                                    : "No current scope",
-                                  note: current
-                                    ? "Summary and history do not identify a current batch"
-                                    : "No current declaration",
-                                  tone: "neutral" as const,
-                                }
-                              : assessmentRows.some(
-                                    (row) => row?.label === "Stale",
-                                  )
-                                ? {
-                                    label: "Stale",
-                                    note: "At least one current assessment is stale",
-                                    tone: "warning" as const,
-                                  }
-                                : assessmentRows.some(
-                                      (row) =>
-                                        row?.label === "Incomplete" ||
-                                        row?.label === "Unavailable",
-                                    )
-                                  ? {
-                                      label: "Incomplete / unavailable",
-                                      note: "At least one current comparison is incomplete",
-                                      tone: "warning" as const,
-                                    }
-                                  : assessmentRows.some(
-                                        (row) => row?.label === "Loading",
-                                      )
-                                    ? {
-                                        label: "Loading",
-                                        note: "Checking current assessments",
-                                        tone: "neutral" as const,
-                                      }
-                                    : {
-                                        label: "Fresh",
-                                        note: "All available current assessments are fresh",
-                                        tone: "active" as const,
-                                      };
+                        : freshnessSummary(history, assessmentRows, current);
                       return (
                         <tr key={item.id}>
                           <th scope="row">

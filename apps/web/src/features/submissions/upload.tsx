@@ -5,13 +5,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   useIsMutating,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { EmptyState, ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { ApiError, isUUID, wasReplayed } from "@/lib/api/client";
+import { saveBlob } from "@/lib/download";
 import type { components } from "@/lib/api/generated";
 import { useSubmissionContext, validAcademicYear } from "./data";
 import {
@@ -40,17 +41,10 @@ export function CandidateUpload() {
   // One key per submission attempt: kept while the same attempt is pending or
   // its outcome is unknown, cleared when a new upload is deliberately prepared.
   const attemptKey = useRef<string | null>(null);
-  const policy = useQuery({
-    queryKey: [
-      "private",
-      session?.generation,
-      session?.user.id,
-      "upload-policy",
-    ],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<Policy>("/submissions/upload-policy", { signal }),
-  });
+  const policy = useApiQuery<Policy>(
+    useScope("upload-policy"),
+    "/submissions/upload-policy",
+  );
   const mutation = useMutation({
     mutationKey: [
       "private",
@@ -170,16 +164,12 @@ export function CandidateUpload() {
 
   function downloadTemplate() {
     if (!policy.data) return;
-    const url = URL.createObjectURL(
-      new Blob([templateCSV(policy.data.required_headers)], {
+    saveBlob({
+      blob: new Blob([templateCSV(policy.data.required_headers)], {
         type: "text/csv;charset=utf-8",
       }),
-    );
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "pravya-students-v1.csv";
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      filename: "pravya-students-v1.csv",
+    });
   }
   const outcome = mutation.isError ? uploadError(mutation.error) : null;
   const locked =
@@ -250,13 +240,10 @@ export function CandidateUpload() {
           {programmes.isSuccess &&
             !options.some((item) => item.active) &&
             !programmes.hasNextPage && (
-              <div className="empty-state">
-                <h3>No active programmes</h3>
-                <p>
-                  An active programme is required before uploading. No upload is
-                  available for this institution.
-                </p>
-              </div>
+              <EmptyState title="No active programmes">
+                An active programme is required before uploading. No upload is
+                available for this institution.
+              </EmptyState>
             )}
           <form
             className="upload-form"

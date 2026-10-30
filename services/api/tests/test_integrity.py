@@ -1,12 +1,10 @@
-import csv
-import io
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 import pytest
-from conftest import pin_clock
+from conftest import admission_csv, pin_clock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
@@ -23,7 +21,6 @@ from app.modules.auth.models import User
 from app.modules.cases.models import CaseEvent
 from app.modules.integrity.models import IntegrityDecision
 from app.modules.submissions.models import StudentRecordVersion, SubmissionBatch
-from app.modules.submissions.parsing import HEADERS
 from app.modules.verification.models import ApaarVerification
 from app.seed import seed_id
 
@@ -63,28 +60,7 @@ def only(body: dict[str, Any], rule_id: str) -> list[dict[str, Any]]:
 
 
 def make_csv(*rows: dict[str, str]) -> bytes:
-    defaults = dict(
-        zip(
-            HEADERS,
-            [
-                "DEMO-ONE",
-                "Synthetic One",
-                "900000000001",
-                "2026-27",
-                "DEMO-COMP",
-                "REGULAR",
-                "ACTIVE",
-                "2026-08-01",
-            ],
-            strict=True,
-        )
-    )
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(HEADERS)
-    for row in rows:
-        writer.writerow({**defaults, **row}.values())
-    return output.getvalue().encode()
+    return admission_csv(*rows)
 
 
 def validated(client: TestClient, headers: dict[str, str], data: bytes) -> str:

@@ -8,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.database import transact
 from app.core.http import APIError, not_found
-from app.core.idempotency import check_fingerprint
+from app.core.idempotency import find_replay
 from app.modules.audit.services import record_action
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
@@ -31,6 +32,27 @@ from app.modules.submissions.schemas import (
 from app.modules.validation.rules import CATEGORIES, STATUSES
 
 
+def normalized_status(value: str) -> str:
+    """Unknown enrollment statuses never crash a count; they become UNSUPPORTED."""
+    return value if value in STATUSES else "UNSUPPORTED"
+
+
+def identifier_maps(
+    current: list[StudentRecordVersion], candidate: list[StudentRecordVersion]
+) -> tuple[dict[str, StudentRecordVersion], dict[str, StudentRecordVersion]] | None:
+    """Trimmed college_student_id before/after maps, or None when ambiguous."""
+    before = {row.college_student_id: row for row in current}
+    after = {row.college_student_id: row for row in candidate}
+    if (
+        len(before) != len(current)
+        or len(after) != len(candidate)
+        or "" in before
+        or "" in after
+    ):
+        return None
+    return before, after
+
+
 def snapshot_counts(rows: list[StudentRecordVersion]) -> dict[str, Any]:
     """Declared rows, not deduplicated people or official accounting policy."""
     categories = {
@@ -40,12 +62,7 @@ def snapshot_counts(rows: list[StudentRecordVersion]) -> dict[str, Any]:
     statuses: Counter[str] = Counter()
     unclassified = 0
     for row in rows:
-        status = (
-            row.enrollment_status
-            if row.enrollment_status in STATUSES
-            else "UNSUPPORTED"
-        )
-        statuses[status] += 1
+        statuses[normalized_status(row.enrollment_status)] += 1
         if row.admission_category in categories:
             categories[row.admission_category]["declared_records"] += 1
             categories[row.admission_category]["demo_active_records"] += (
@@ -106,19 +123,19 @@ def idempotent_replay(
     session: Session, institution_id: UUID, key: str, fingerprint: str
 ) -> UploadResponse | None:
     """Original response for a repeated key; 409 if the key carried other input."""
-    batch = session.scalar(
-        select(SubmissionBatch).where(
+    batch = find_replay(
+        session,
+        SubmissionBatch,
+        [
             SubmissionBatch.institution_id == institution_id,
             SubmissionBatch.idempotency_key == key,
-        )
+        ],
+        fingerprint_attr="idempotency_fingerprint",
+        fingerprint=fingerprint,
+        message="Idempotency key used with a different upload",
     )
     if batch is None:
         return None
-    check_fingerprint(
-        batch.idempotency_fingerprint,
-        fingerprint,
-        "Idempotency key used with a different upload",
-    )
     # Only batches received no later than the original count, so the body is stable.
     earlier = session.scalar(
         select(SubmissionBatch.id)
@@ -147,7 +164,7 @@ def persist_candidate(
     idempotency: tuple[str, str] | None = None,
 ) -> UploadResponse:
     """`idempotency` is an optional (key, fingerprint) pair."""
-    try:
+    with transact(session):
         upload_scope(session, user, context)
         check_budget(deadline)
         scope_values = {
@@ -234,11 +251,7 @@ def persist_candidate(
             id=batch.id, warnings=["DUPLICATE_UPLOAD"] if duplicate is not None else []
         )
         check_budget(deadline)
-        session.commit()
         return result
-    except Exception:
-        session.rollback()
-        raise
 
 
 def scoped_batch(session: Session, user: User, batch_id: UUID) -> SubmissionBatch:

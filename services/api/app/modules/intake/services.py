@@ -9,10 +9,11 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
+from app.core.database import transact
 from app.core.http import APIError, not_found
+from app.core.query import latest_per_key, latest_row
 from app.modules.audit.services import record_action
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
@@ -37,7 +38,12 @@ from app.modules.submissions.models import (
     SubmissionScope,
 )
 from app.modules.submissions.parsing import HEADERS
-from app.modules.submissions.services import batch_rows, scoped_batch, snapshot_counts
+from app.modules.submissions.services import (
+    batch_rows,
+    identifier_maps,
+    scoped_batch,
+    snapshot_counts,
+)
 from app.modules.validation.rules import CATEGORIES
 
 CHANGE_LIST_CAP = 200
@@ -118,18 +124,26 @@ def capacity_line(
     }
 
 
+def utilisation_pct(active: int | None, approved: int | None) -> float | None:
+    """Known counts only; a missing side is unknown, never zero."""
+    return (
+        round(active / approved * 100, 1) if active is not None and approved else None
+    )
+
+
 def latest_declaration(
     session: Session, institution_id: UUID, programme_id: UUID, academic_year: str
 ) -> IntakeDeclaration | None:
     return session.scalar(
-        select(IntakeDeclaration)
-        .where(
-            IntakeDeclaration.institution_id == institution_id,
-            IntakeDeclaration.programme_id == programme_id,
-            IntakeDeclaration.academic_year == academic_year,
+        latest_row(
+            select(IntakeDeclaration).where(
+                IntakeDeclaration.institution_id == institution_id,
+                IntakeDeclaration.programme_id == programme_id,
+                IntakeDeclaration.academic_year == academic_year,
+            ),
+            IntakeDeclaration.created_at,
+            IntakeDeclaration.id,
         )
-        .order_by(IntakeDeclaration.created_at.desc(), IntakeDeclaration.id.desc())
-        .limit(1)
     )
 
 
@@ -138,20 +152,15 @@ def latest_declarations_bulk(
 ) -> dict[tuple[UUID, str], int]:
     # Same "latest wins" ordering as `latest_declaration`, in bulk.
     rows = session.execute(
-        select(
-            IntakeDeclaration.programme_id,
-            IntakeDeclaration.academic_year,
-            IntakeDeclaration.declared_total,
-        )
-        .where(IntakeDeclaration.programme_id.in_(programme_ids))
-        .order_by(
-            IntakeDeclaration.programme_id,
-            IntakeDeclaration.academic_year,
-            IntakeDeclaration.created_at.desc(),
-            IntakeDeclaration.id.desc(),
-        )
-        .ext(
-            distinct_on(IntakeDeclaration.programme_id, IntakeDeclaration.academic_year)
+        latest_per_key(
+            select(
+                IntakeDeclaration.programme_id,
+                IntakeDeclaration.academic_year,
+                IntakeDeclaration.declared_total,
+            ).where(IntakeDeclaration.programme_id.in_(programme_ids)),
+            key=[IntakeDeclaration.programme_id, IntakeDeclaration.academic_year],
+            stamp=IntakeDeclaration.created_at,
+            tie=IntakeDeclaration.id,
         )
     )
     return {(pid, year): total for pid, year, total in rows}
@@ -165,7 +174,7 @@ def change_rule(
     request: RuleChangeRequest,
 ) -> IntakeRuleChange:
     """Update in place (keeps the validation-selected rule_version) and log it."""
-    try:
+    with transact(session):
         intake_actor(session, user, institution_id, officer_only=True)
         rule = session.scalar(
             select(IntakeRule)
@@ -204,17 +213,12 @@ def change_rule(
                 "rule_version": rule.rule_version,
             },
         )
-        session.commit()
         return change
-    except Exception:
-        session.rollback()
-        raise
-
 
 def declare(
     session: Session, user: User, institution_id: UUID, request: DeclarationRequest
 ) -> IntakeDeclaration:
-    try:
+    with transact(session):
         intake_actor(session, user, institution_id)
         scoped_programme(session, institution_id, request.programme_id)
         declaration = IntakeDeclaration(
@@ -241,11 +245,7 @@ def declare(
                 "declared_total": str(request.declared_total),
             },
         )
-        session.commit()
         return declaration
-    except Exception:
-        session.rollback()
-        raise
 
 
 def snapshot_diff(
@@ -254,15 +254,10 @@ def snapshot_diff(
     """Exact trimmed college_student_id comparison; never merges on APAAR."""
     if current is None:
         return {"status": "NO_CURRENT_SNAPSHOT"}
-    before = {row.college_student_id: row for row in current}
-    after = {row.college_student_id: row for row in candidate}
-    if (
-        len(before) != len(current)
-        or len(after) != len(candidate)
-        or "" in before
-        or "" in after
-    ):
+    maps = identifier_maps(current, candidate)
+    if maps is None:
         return {"status": "UNAVAILABLE_AMBIGUOUS_IDENTIFIERS"}
+    before, after = maps
     fields = [name for name in HEADERS if name != "college_student_id"]
     changes: list[dict[str, Any]] = []
     removed_active = 0
@@ -309,7 +304,7 @@ def snapshot_diff(
 def create_assessment(
     session: Session, user: User, batch_id: UUID, rule_version: str
 ) -> AssessmentResponse:
-    try:
+    with transact(session):
         batch = scoped_batch(session, user, batch_id)
         if batch.status != ProcessingStatus.COMPLETED:
             raise APIError(409, "SUBMISSION_NOT_PROCESSED", "Batch is not processed")
@@ -458,11 +453,7 @@ def create_assessment(
             details={"batch_id": str(batch.id), "finding_count": str(len(findings))},
         )
         response = AssessmentResponse.model_validate(assessment)
-        session.commit()
         return response
-    except Exception:
-        session.rollback()
-        raise
 
 
 def scoped_assessment(
@@ -487,7 +478,7 @@ def simulate(
     rule_version: str,
 ) -> SimulationResponse:
     """Read-only against domain tables; only an audit event is written."""
-    try:
+    with transact(session):
         intake_actor(session, user, institution_id)
         scoped_programme(session, institution_id, request.programme_id)
         scope = session.scalar(
@@ -539,7 +530,6 @@ def simulate(
                 "academic_year": request.academic_year,
             },
         )
-        session.commit()
         return SimulationResponse(
             institution_id=institution_id,
             programme_id=request.programme_id,
@@ -549,6 +539,3 @@ def simulate(
             rule_version=rule_version,
             categories=categories,
         )
-    except Exception:
-        session.rollback()
-        raise

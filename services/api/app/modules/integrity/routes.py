@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
-from app.core.http import ErrorResponse, Now, no_store, settings_of
+from app.core.http import Now, error_responses, no_store, settings_of
 from app.core.pagination import Page, PageNumber, PageSize, paginate
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession, require_roles
 from app.modules.auth.models import Role
@@ -27,13 +27,7 @@ from app.modules.integrity.services import (
 router = APIRouter(
     prefix="/api/v1/integrity",
     tags=["Integrity review prompts (DEMO)"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 404, 422, 503),
 )
 
 

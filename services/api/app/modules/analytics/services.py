@@ -40,6 +40,7 @@ from app.modules.intake.services import (
     capacity_line,
     configured_rules,
     latest_declarations_bulk,
+    utilisation_pct,
 )
 from app.modules.submissions.models import (
     ProcessingStatus,
@@ -502,9 +503,7 @@ def intake_utilisation(
                         approved_seats=approved,
                         rule_version=rule.rule_version if rule else None,
                         current_active=active,
-                        utilisation_pct=round(active / approved * 100, 1)
-                        if active is not None and approved
-                        else None,
+                        utilisation_pct=utilisation_pct(active, approved),
                         remaining_capacity=values[0],
                         exceeded=values[1],
                         excess=values[2],

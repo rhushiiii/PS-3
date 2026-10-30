@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 import httpx2
 import pytest
-from conftest import truncate_all
+from conftest import admission_csv, truncate_all
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import Engine, delete, func, select, update
@@ -51,28 +51,7 @@ def fields(institution: str = "cedar", year: str = "2026-27") -> dict[str, str]:
 
 
 def csv_data(**changes: str) -> bytes:
-    values = dict(
-        zip(
-            HEADERS,
-            [
-                "DEMO-ONE",
-                "Synthetic One",
-                "900000000001",
-                "2026-27",
-                "DEMO-COMP",
-                "REGULAR",
-                "ACTIVE",
-                "2026-08-01",
-            ],
-            strict=True,
-        )
-    )
-    values.update(changes)
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(HEADERS)
-    writer.writerow(values.values())
-    return output.getvalue().encode()
+    return admission_csv(changes)
 
 
 def upload(

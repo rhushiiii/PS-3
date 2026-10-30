@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.http import APIError, not_found
-from app.core.pagination import Page, Pagination, count_rows, paginate, window
+from app.core.pagination import Page, paginate, paginate_rows
 from app.modules.audit.services import record_action
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
@@ -37,14 +37,11 @@ from app.modules.credentials.tokens import (
     verify_token,
 )
 from app.modules.institutions.models import Institution, Programme
+from app.modules.institutions.services import scoped_entity
 from app.modules.submissions.models import StudentRecordVersion, SubmissionScope
 
 ISSUER_ROLES = {Role.AICTE_OFFICER, Role.INSTITUTION_ADMIN}
 VERIFIER_ROLES = {Role.AICTE_OFFICER, Role.AUTHORIZED_VERIFIER}
-
-
-def in_scope(user: User, institution_id: UUID) -> bool:
-    return user.role == Role.AICTE_OFFICER or user.institution_id == institution_id
 
 
 def summary(
@@ -86,9 +83,13 @@ def issue_credential(
     now: datetime,
 ) -> IssueResponse:
     require_roles(user, ISSUER_ROLES)
-    record = session.get(StudentRecordVersion, record_version_id)
-    if record is None or not in_scope(user, record.institution_id):
-        raise not_found()
+    record = scoped_entity(
+        session,
+        user,
+        StudentRecordVersion,
+        record_version_id,
+        lambda candidate: require_roles(candidate, ISSUER_ROLES),
+    )
     key = private_key(settings)
     if key is None:
         raise APIError(
@@ -179,22 +180,20 @@ def list_credentials(
     ordered = statement.order_by(
         AdmissionCredential.issued_at.desc(), AdmissionCredential.id.desc()
     )
-    rows = session.execute(window(ordered, page, page_size))
-    return Page[CredentialSummary](
-        data=[summary(credential, revoked_at) for credential, revoked_at in rows],
-        pagination=Pagination(
-            page=page, page_size=page_size, total=count_rows(session, statement)
-        ),
-    )
+    return paginate_rows(session, ordered, summary, page, page_size)
 
 
 def revoke_credential(
     session: Session, user: User, credential_id: UUID, reason: str
 ) -> RevocationResponse:
     require_roles(user, ISSUER_ROLES)
-    credential = session.get(AdmissionCredential, credential_id)
-    if credential is None or not in_scope(user, credential.institution_id):
-        raise not_found()
+    credential = scoped_entity(
+        session,
+        user,
+        AdmissionCredential,
+        credential_id,
+        lambda item: require_roles(item, ISSUER_ROLES),
+    )
     revocation = CredentialRevocation(
         id=uuid4(), credential_id=credential.id, revoked_by=user.id, reason=reason
     )

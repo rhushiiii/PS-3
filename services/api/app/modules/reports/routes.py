@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import ErrorResponse, Now
+from app.core.http import Now, error_responses
 from app.core.rate_limit import rate_limit
 from app.modules.analytics.services import Filters
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
@@ -19,14 +19,7 @@ from app.modules.reports.services import ReportParams, build_report, record_expo
 router = APIRouter(
     prefix="/api/v1/reports",
     tags=["Reports (SIMULATED / DEMO exports)"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        429: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 404, 422, 429, 503),
 )
 Reader = Annotated[Session, Depends(get_snapshot_session)]
 

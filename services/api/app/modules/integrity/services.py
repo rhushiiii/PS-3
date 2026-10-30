@@ -13,12 +13,13 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.database import transact
 from app.core.http import APIError
 from app.core.pagination import paginate_list
+from app.core.query import latest_per_key, latest_row
 from app.modules.audit.services import record_action
 from app.modules.auth.models import User
 from app.modules.cases.models import CaseEvent, CaseRecord, ReviewCase
@@ -129,13 +130,14 @@ def reference_batch(session: Session, scope: SubmissionScope) -> SubmissionBatch
     if scope.current_batch_id is not None:
         return session.get(SubmissionBatch, scope.current_batch_id)
     return session.scalar(
-        select(SubmissionBatch)
-        .where(
-            SubmissionBatch.scope_id == scope.id,
-            SubmissionBatch.status == ProcessingStatus.COMPLETED,
+        latest_row(
+            select(SubmissionBatch).where(
+                SubmissionBatch.scope_id == scope.id,
+                SubmissionBatch.status == ProcessingStatus.COMPLETED,
+            ),
+            SubmissionBatch.completed_at,
+            SubmissionBatch.id,
         )
-        .order_by(SubmissionBatch.completed_at.desc(), SubmissionBatch.id.desc())
-        .limit(1)
     )
 
 
@@ -247,13 +249,13 @@ def data_quality_and_identity(
                 )
             )
     latest = ctx.session.execute(
-        select(ApaarVerification.record_version_id, ApaarVerification.status)
-        .where(ApaarVerification.batch_id == batch.id)
-        .ext(distinct_on(ApaarVerification.record_version_id))
-        .order_by(
-            ApaarVerification.record_version_id,
-            ApaarVerification.requested_at.desc(),
-            ApaarVerification.id.desc(),
+        latest_per_key(
+            select(
+                ApaarVerification.record_version_id, ApaarVerification.status
+            ).where(ApaarVerification.batch_id == batch.id),
+            key=[ApaarVerification.record_version_id],
+            stamp=ApaarVerification.requested_at,
+            tie=ApaarVerification.id,
         )
     )
     grouped: dict[str, list[UUID]] = {}
@@ -292,14 +294,15 @@ def latest_assessment(
     session: Session, scope: SubmissionScope
 ) -> IntakeAssessment | None:
     return session.scalar(
-        select(IntakeAssessment)
-        .where(
-            IntakeAssessment.institution_id == scope.institution_id,
-            IntakeAssessment.programme_id == scope.programme_id,
-            IntakeAssessment.academic_year == scope.academic_year,
+        latest_row(
+            select(IntakeAssessment).where(
+                IntakeAssessment.institution_id == scope.institution_id,
+                IntakeAssessment.programme_id == scope.programme_id,
+                IntakeAssessment.academic_year == scope.academic_year,
+            ),
+            IntakeAssessment.computed_at,
+            IntakeAssessment.id,
         )
-        .order_by(IntakeAssessment.computed_at.desc(), IntakeAssessment.id.desc())
-        .limit(1)
     )
 
 
@@ -312,15 +315,16 @@ def change_pair(
     current = session.get(SubmissionBatch, scope.current_batch_id)
     assert current is not None
     candidate = session.scalar(
-        select(SubmissionBatch)
-        .where(
-            SubmissionBatch.scope_id == scope.id,
-            SubmissionBatch.status == ProcessingStatus.COMPLETED,
-            SubmissionBatch.activated_at.is_(None),
-            SubmissionBatch.completed_at > current.completed_at,
+        latest_row(
+            select(SubmissionBatch).where(
+                SubmissionBatch.scope_id == scope.id,
+                SubmissionBatch.status == ProcessingStatus.COMPLETED,
+                SubmissionBatch.activated_at.is_(None),
+                SubmissionBatch.completed_at > current.completed_at,
+            ),
+            SubmissionBatch.completed_at,
+            SubmissionBatch.id,
         )
-        .order_by(SubmissionBatch.completed_at.desc(), SubmissionBatch.id.desc())
-        .limit(1)
     )
     if candidate is not None:
         return candidate, current
@@ -544,16 +548,14 @@ def stale_signals(ctx: Compute) -> list[Signal]:
     latest = {
         row.programme_id: row
         for row in ctx.session.execute(
-            select(SubmissionBatch.programme_id, SubmissionBatch.id)
-            .where(
-                SubmissionBatch.institution_id == ctx.institution_id,
-                SubmissionBatch.activated_at.is_not(None),
-            )
-            .ext(distinct_on(SubmissionBatch.programme_id))
-            .order_by(
-                SubmissionBatch.programme_id,
-                SubmissionBatch.activated_at.desc(),
-                SubmissionBatch.id.desc(),
+            latest_per_key(
+                select(SubmissionBatch.programme_id, SubmissionBatch.id).where(
+                    SubmissionBatch.institution_id == ctx.institution_id,
+                    SubmissionBatch.activated_at.is_not(None),
+                ),
+                key=[SubmissionBatch.programme_id],
+                stamp=SubmissionBatch.activated_at,
+                tie=SubmissionBatch.id,
             )
         )
     }
@@ -634,13 +636,13 @@ def latest_decisions(
     session: Session, institution_id: UUID
 ) -> dict[str, IntegrityDecision]:
     rows = session.scalars(
-        select(IntegrityDecision)
-        .where(IntegrityDecision.institution_id == institution_id)
-        .ext(distinct_on(IntegrityDecision.signal_key))
-        .order_by(
-            IntegrityDecision.signal_key,
-            IntegrityDecision.created_at.desc(),
-            IntegrityDecision.id.desc(),
+        latest_per_key(
+            select(IntegrityDecision).where(
+                IntegrityDecision.institution_id == institution_id
+            ),
+            key=[IntegrityDecision.signal_key],
+            stamp=IntegrityDecision.created_at,
+            tie=IntegrityDecision.id,
         )
     )
     return {row.signal_key: row for row in rows}
@@ -768,7 +770,7 @@ def record_decision(
     request: DecisionRequest,
     now: datetime,
 ) -> IntegrityDecision:
-    try:
+    with transact(session):
         intake_actor(session, user, institution_id, officer_only=True)
         current = {
             s.signal_key: s
@@ -799,8 +801,4 @@ def record_decision(
             entity_id=decision.id,
             details={"decision": request.decision, "rule_id": target.rule_id},
         )
-        session.commit()
         return decision
-    except Exception:
-        session.rollback()
-        raise

@@ -1,16 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { ApiError, errorMessage, wasReplayed } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { DEMO_TAG, when } from "@/lib/format";
 
 type VerificationPage = components["schemas"]["Page_VerificationResponse_"];
 type Verification = components["schemas"]["VerificationResponse"];
 
-export const SIM_LABEL =
-  "SIMULATED / DEMO DATA — not an official government verification";
+export const SIM_LABEL = `${DEMO_TAG} — not an official government verification`;
 
 const RETRYABLE: Verification["status"][] = [
   "PENDING",
@@ -57,7 +58,7 @@ export function RecordVerification({
   officer: boolean;
   index: number;
 }) {
-  const { session, request } = useSession();
+  const { request } = useSession();
   const queryClient = useQueryClient();
   const [purpose, setPurpose] = useState("AICTE_CASE_REVIEW");
   const [consentRef, setConsentRef] = useState("");
@@ -66,22 +67,11 @@ export function RecordVerification({
   // One Idempotency-Key per attempt: reused while the same request body is
   // re-sent (e.g. after a network error), replaced once it succeeds or changes.
   const attempt = useRef<{ key: string; body: string } | null>(null);
-  const baseKey = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "apaar-verify",
-    recordVersionId,
-  ];
-  const history = useQuery({
-    queryKey: baseKey,
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<VerificationPage>(
-        `/records/${recordVersionId}/apaar-verify?page=1&page_size=5`,
-        { signal },
-      ),
-  });
+  const baseKey = useScope("apaar-verify", recordVersionId);
+  const history = useApiQuery<VerificationPage>(
+    baseKey,
+    `/records/${recordVersionId}/apaar-verify?page=1&page_size=5`,
+  );
   const verify = useMutation({
     mutationFn: (retryOf: string | null) => {
       const body = JSON.stringify({
@@ -144,10 +134,7 @@ export function RecordVerification({
               {statusText[latest.status]}
             </span>{" "}
             <span className="cell-note">
-              {latest.provenance_label} ·{" "}
-              <time dateTime={latest.requested_at}>
-                {new Date(latest.requested_at).toLocaleString()}
-              </time>
+              {latest.provenance_label} · {when(latest.requested_at)}
             </span>
           </p>
           <dl className="case-facts">

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { DemoBanner, QueryBoundary } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
-import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
+import { validAcademicYear } from "@/lib/academic-year";
 import { ScrollTable } from "@/features/intake/shared";
 import type { components } from "@/lib/api/generated";
+import { humanize } from "@/lib/format";
 import { FAMILIES, bandTone } from "./panel";
 
 type Overview = components["schemas"]["OverviewResponse"];
@@ -22,7 +23,6 @@ export function InstitutionsRequiringReview({
   canOpenInstitution: boolean;
   initialYear: string;
 }) {
-  const { session, request } = useSession();
   const [yearDraft, setYearDraft] = useState(initialYear);
   const [year, setYear] = useState(initialYear);
   const [bandDraft, setBandDraft] = useState("");
@@ -35,20 +35,10 @@ export function InstitutionsRequiringReview({
   });
   if (year) params.set("academic_year", year);
   if (band) params.set("band", band);
-  const overview = useQuery({
-    queryKey: [
-      "private",
-      session?.generation,
-      session?.user.id,
-      "integrity-overview",
-      year,
-      band,
-      page,
-    ],
-    enabled: !!session,
-    queryFn: ({ signal }) =>
-      request<Overview>(`/integrity/overview?${params}`, { signal }),
-  });
+  const overview = useApiQuery<Overview>(
+    useScope("integrity-overview", year, band, page),
+    `/integrity/overview?${params}`,
+  );
   return (
     <section
       className="panel"
@@ -74,8 +64,10 @@ export function InstitutionsRequiringReview({
           className="dashboard-filters"
           onSubmit={(e) => {
             e.preventDefault();
-            if (yearDraft && !/^\d{4}-\d{2}$/.test(yearDraft))
-              return setYearError("Use an academic year such as 2026-27.");
+            if (yearDraft && !validAcademicYear(yearDraft))
+              return setYearError(
+                "Use a consecutive academic year such as 2026-27.",
+              );
             setYearError("");
             setYear(yearDraft);
             setBand(bandDraft);
@@ -99,7 +91,7 @@ export function InstitutionsRequiringReview({
               <option value="">All bands</option>
               {BANDS.map((b) => (
                 <option key={b} value={b}>
-                  {b.charAt(0) + b.slice(1).toLowerCase()}
+                  {humanize(b)}
                 </option>
               ))}
             </select>
@@ -155,8 +147,7 @@ export function InstitutionsRequiringReview({
                         <span
                           className={`status-badge ${bandTone(item.score.band)}`}
                         >
-                          {item.score.band.charAt(0) +
-                            item.score.band.slice(1).toLowerCase()}
+                          {humanize(item.score.band)}
                         </span>
                       </td>
                       {FAMILIES.map((f) => (

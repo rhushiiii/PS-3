@@ -1,22 +1,7 @@
 import { motion } from "framer-motion";
 import { humanize } from "@/lib/format";
 
-export type CountMap = Record<string, unknown>;
-
-export function valueObject(value: unknown): CountMap | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as CountMap)
-    : null;
-}
-
-export function countValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function displayCount(value: unknown): string {
-  const count = countValue(value);
-  return count === null ? "Unavailable" : count.toLocaleString();
-}
+export { valueObject, countValue, displayCount } from "@/lib/format";
 
 export const prettyLabel = humanize;
 

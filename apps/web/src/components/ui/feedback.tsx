@@ -93,3 +93,41 @@ export function FilterOptionsError() {
     </p>
   );
 }
+
+/** The shared "nothing here" card; use `role` only for genuine alerts. */
+export function EmptyState({
+  title,
+  children,
+  role,
+}: {
+  title: string;
+  children?: ReactNode;
+  role?: string;
+}) {
+  return (
+    <div className="empty-state" role={role}>
+      <h3>{title}</h3>
+      {children ? <p>{children}</p> : null}
+    </div>
+  );
+}
+
+/** Polite success line plus an assertive error line, announced in order. */
+export function FormFeedback({
+  notice,
+  error,
+}: {
+  notice?: string | null;
+  error?: string | null;
+}) {
+  return (
+    <div aria-live="polite">
+      {notice ? <p className="form-success">{notice}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}

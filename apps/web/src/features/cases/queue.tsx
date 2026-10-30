@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { QueryBoundary, FilterOptionsError } from "@/components/ui/feedback";
+import {
+  QueryBoundary,
+  EmptyState,
+  FilterOptionsError,
+} from "@/components/ui/feedback";
+import { EnumSelect, InstitutionSelect } from "@/components/ui/filters";
 import { Icon } from "@/components/ui/icon";
 import { QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useFilterState, useScope } from "@/lib/api/hooks";
+import { plain, when } from "@/lib/format";
 import type { components } from "@/lib/api/generated";
 import {
   CASE_PRIORITIES,
@@ -16,14 +22,13 @@ import {
   CaseBadges,
   statusLabel,
   statusTone,
-  titleCase,
+  type CasePage,
   type CasePriority,
   type CaseSeverity,
   type CaseStatus,
 } from "./shared";
 import { useInstitutionOptions } from "@/features/institutions/options";
 
-type CasePage = components["schemas"]["Page_CaseResponse_"];
 type Assignee = components["schemas"]["AssigneeResponse"];
 
 type Filters = {
@@ -63,51 +68,45 @@ function initialFilters(search: URLSearchParams): Filters {
 }
 
 export function CaseQueue() {
-  const { session, request } = useSession();
+  const { session } = useSession();
   const search = useSearchParams();
-  const [filters, setFilters] = useState<Filters>(() => initialFilters(search));
   const [page, setPage] = useState(1);
-  const officer = session?.user.role === "AICTE_OFFICER";
-  const scope = ["private", session?.generation, session?.user.id];
-  const hasFilters = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
-  const update = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-    setPage(1);
-  };
-
-  const assignees = useQuery({
-    queryKey: [...scope, "cases", "assignees"],
-    enabled: !!session && officer,
-    queryFn: ({ signal }) =>
-      request<Assignee[]>("/cases/assignees", { signal }),
-  });
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions", "filter-options"],
-    !!session && officer,
+  const { filters, update, reset } = useFilterState(
+    initialFilters(search),
+    () => setPage(1),
   );
+  const officer = session?.user.role === "AICTE_OFFICER";
+  const hasFilters = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
-  const cases = useQuery({
-    queryKey: [...scope, "cases", filters, page],
-    enabled: !!session,
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: "20",
-      });
-      if (filters.status) params.set("status", filters.status);
-      if (filters.priority) params.set("priority", filters.priority);
-      if (filters.severity) params.set("severity", filters.severity);
-      if (filters.overdue) params.set("overdue", "true");
-      const minAge = Number.parseInt(filters.minAge, 10);
-      if (Number.isInteger(minAge) && minAge >= 0)
-        params.set("min_age_days", String(minAge));
-      if (officer && filters.assignee)
-        params.set("assigned_to", filters.assignee);
-      if (officer && filters.institution)
-        params.set("institution_id", filters.institution);
-      return request<CasePage>(`/cases?${params}`, { signal });
-    },
-  });
+  const assignees = useApiQuery<Assignee[]>(
+    useScope("cases", "assignees"),
+    "/cases/assignees",
+    { enabled: officer },
+  );
+  const institutions = useInstitutionOptions(!!session && officer);
+
+  const casesPath = (() => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: "20",
+    });
+    if (filters.status) params.set("status", filters.status);
+    if (filters.priority) params.set("priority", filters.priority);
+    if (filters.severity) params.set("severity", filters.severity);
+    if (filters.overdue) params.set("overdue", "true");
+    const minAge = Number.parseInt(filters.minAge, 10);
+    if (Number.isInteger(minAge) && minAge >= 0)
+      params.set("min_age_days", String(minAge));
+    if (officer && filters.assignee)
+      params.set("assigned_to", filters.assignee);
+    if (officer && filters.institution)
+      params.set("institution_id", filters.institution);
+    return `/cases?${params}`;
+  })();
+  const cases = useApiQuery<CasePage>(
+    useScope("cases", filters, page),
+    casesPath,
+  );
   return (
     <>
       <div className="page-heading">
@@ -149,38 +148,22 @@ export function CaseQueue() {
               ))}
             </select>
           </label>
-          <label className="inline-filter">
-            Priority
-            <select
-              value={filters.priority}
-              onChange={(e) =>
-                update("priority", e.target.value as CasePriority | "")
-              }
-            >
-              <option value="">Any priority</option>
-              {CASE_PRIORITIES.map((item) => (
-                <option key={item} value={item}>
-                  {titleCase(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="inline-filter">
-            Severity
-            <select
-              value={filters.severity}
-              onChange={(e) =>
-                update("severity", e.target.value as CaseSeverity | "")
-              }
-            >
-              <option value="">Any severity</option>
-              {CASE_SEVERITIES.map((item) => (
-                <option key={item} value={item}>
-                  {titleCase(item)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <EnumSelect
+            className="inline-filter"
+            label="Priority"
+            values={CASE_PRIORITIES}
+            value={filters.priority}
+            onChange={(value) => update("priority", value as CasePriority | "")}
+            allLabel="Any priority"
+          />
+          <EnumSelect
+            className="inline-filter"
+            label="Severity"
+            values={CASE_SEVERITIES}
+            value={filters.severity}
+            onChange={(value) => update("severity", value as CaseSeverity | "")}
+            allLabel="Any severity"
+          />
           <label className="inline-filter">
             Overdue
             <select
@@ -219,31 +202,20 @@ export function CaseQueue() {
                   ))}
                 </select>
               </label>
-              <label className="inline-filter">
-                Institution
-                <select
-                  value={filters.institution}
-                  onChange={(e) => update("institution", e.target.value)}
-                  disabled={institutions.isPending}
-                >
-                  <option value="">All institutions</option>
-                  {institutions.data?.data.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <InstitutionSelect
+                className="inline-filter"
+                institutions={institutions.data?.data ?? []}
+                value={filters.institution}
+                disabled={institutions.isPending}
+                onChange={(value) => update("institution", value)}
+              />
             </>
           )}
           <button
             type="button"
             className="button secondary small"
             disabled={!hasFilters}
-            onClick={() => {
-              setFilters(NO_FILTERS);
-              setPage(1);
-            }}
+            onClick={reset}
           >
             Clear filters
           </button>
@@ -257,23 +229,17 @@ export function CaseQueue() {
         <QueryBoundary query={cases} loading="Loading cases…">
           {(data) =>
             data.data.length === 0 ? (
-              <div className="empty-state">
-                {hasFilters ? (
-                  <>
-                    <h3>No cases match these filters</h3>
-                    <p>Try removing a filter or clear all filters.</p>
-                  </>
-                ) : (
-                  <>
-                    <h3>No cases yet</h3>
-                    <p>
-                      {officer
-                        ? "Open a case from a flagged finding to begin an investigation."
-                        : "No officer has opened a case against your institution's records."}
-                    </p>
-                  </>
-                )}
-              </div>
+              hasFilters ? (
+                <EmptyState title="No cases match these filters">
+                  Try removing a filter or clear all filters.
+                </EmptyState>
+              ) : (
+                <EmptyState title="No cases yet">
+                  {officer
+                    ? "Open a case from a flagged finding to begin an investigation."
+                    : "No officer has opened a case against your institution's records."}
+                </EmptyState>
+              )
             ) : (
               <div className="institution-list">
                 {data.data.map((item) => (
@@ -284,7 +250,7 @@ export function CaseQueue() {
                     <div>
                       <h3>
                         <Link href={`/cases/${item.id}`}>
-                          {item.category.replaceAll("_", " ")}
+                          {plain(item.category)}
                         </Link>
                       </h3>
                       <p>
@@ -293,11 +259,8 @@ export function CaseQueue() {
                           : item.summary}
                       </p>
                       <p className="cell-note">
-                        Opened{" "}
-                        <time dateTime={item.opened_at}>
-                          {new Date(item.opened_at).toLocaleString()}
-                        </time>{" "}
-                        · {item.record_version_ids.length} linked record
+                        Opened {when(item.opened_at)} ·{" "}
+                        {item.record_version_ids.length} linked record
                         {item.record_version_ids.length === 1 ? "" : "s"} · Age{" "}
                         {item.age_days} day{item.age_days === 1 ? "" : "s"}
                         {item.due_at && (

@@ -8,6 +8,7 @@ export type CaseSeverity = Schemas["CaseResponse"]["severity"];
 export type CaseEventAction = Schemas["CaseEventResponse"]["action"];
 export type CaseAction = Schemas["CaseActionRequest"]["action"];
 export type CaseSummary = Schemas["CaseResponse"];
+export type CasePage = Schemas["Page_CaseResponse_"];
 
 export const CASE_STATUSES: CaseStatus[] = [
   "OPEN",

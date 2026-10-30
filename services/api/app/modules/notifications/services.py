@@ -22,7 +22,7 @@ from app.core.http import not_found
 from app.core.pagination import Page, paginate
 from app.modules.auth.dependencies import require_roles
 from app.modules.auth.models import Role, User
-from app.modules.cases.models import CLOSED_STATUSES, ReviewCase
+from app.modules.cases.models import ReviewCase, overdue_clause
 from app.modules.institutions.models import Institution
 from app.modules.notifications.models import Notification, NotificationKind
 from app.modules.notifications.schemas import NotificationResponse
@@ -107,8 +107,7 @@ def ensure_overdue_notifications(session: Session, user: User) -> None:
     cases = session.scalars(
         select(ReviewCase)
         .where(
-            ReviewCase.due_at < datetime.now(UTC),
-            ReviewCase.status.not_in(CLOSED_STATUSES),
+            overdue_clause(datetime.now(UTC)),
             (ReviewCase.assigned_to == user.id) | ReviewCase.assigned_to.is_(None),
         )
         .order_by(ReviewCase.due_at)

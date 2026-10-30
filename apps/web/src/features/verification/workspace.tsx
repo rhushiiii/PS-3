@@ -1,45 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { QueryBoundary } from "@/components/ui/feedback";
+import { EmptyState, QueryBoundary } from "@/components/ui/feedback";
+import { InstitutionSelect } from "@/components/ui/filters";
 import { useSession } from "@/features/auth/session";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import {
   RecordVerification,
   SIM_LABEL,
 } from "@/features/cases/record-verification";
 import type { components } from "@/lib/api/generated";
+import { DEMO_TAG } from "@/lib/format";
 import { useInstitutionOptions } from "@/features/institutions/options";
 
 type RecordPage = components["schemas"]["Page_RecordRow_"];
 
 export function VerificationWorkspace() {
-  const { session, request } = useSession();
-  const scope = ["private", session?.generation, session?.user.id];
+  const { session } = useSession();
   const [q, setQ] = useState("");
   const [institution, setInstitution] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const term = q.trim();
 
-  const institutions = useInstitutionOptions(
-    [...scope, "institutions", "filter-options"],
-    !!session,
+  const institutions = useInstitutionOptions(!!session);
+  const recordsPath = (() => {
+    const params = new URLSearchParams({ page: "1", page_size: "10" });
+    if (term) params.set("q", term);
+    if (institution) params.set("institution_id", institution);
+    return `/records?${params}`;
+  })();
+  const records = useApiQuery<RecordPage>(
+    useScope("verification-search", term, institution),
+    recordsPath,
+    { enabled: !!term || !!institution },
   );
-  const records = useQuery({
-    queryKey: [...scope, "verification-search", term, institution],
-    enabled: !!session && (!!term || !!institution),
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({ page: "1", page_size: "10" });
-      if (term) params.set("q", term);
-      if (institution) params.set("institution_id", institution);
-      return request<RecordPage>(`/records?${params}`, { signal });
-    },
-  });
 
   return (
     <>
       <div className="page-heading">
-        <p className="eyebrow">APAAR VERIFICATION · SIMULATED / DEMO DATA</p>
+        <p className="eyebrow">{`APAAR VERIFICATION · ${DEMO_TAG}`}</p>
         <h1>APAAR verification</h1>
         <p className="sim-label">{SIM_LABEL}</p>
         <p>
@@ -72,37 +71,26 @@ export function VerificationWorkspace() {
               }}
             />
           </label>
-          <label className="inline-filter">
-            Institution
-            <select
-              value={institution}
-              disabled={institutions.isPending}
-              onChange={(e) => {
-                setInstitution(e.target.value);
-                setSelected(null);
-              }}
-            >
-              <option value="">All institutions</option>
-              {institutions.data?.data.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <InstitutionSelect
+            className="inline-filter"
+            institutions={institutions.data?.data ?? []}
+            value={institution}
+            disabled={institutions.isPending}
+            onChange={(value) => {
+              setInstitution(value);
+              setSelected(null);
+            }}
+          />
         </form>
         {!term && !institution ? (
-          <div className="empty-state">
-            <h3>Search to begin</h3>
-            <p>Enter a student ID or name, or choose an institution.</p>
-          </div>
+          <EmptyState title="Search to begin">
+            Enter a student ID or name, or choose an institution.
+          </EmptyState>
         ) : (
           <QueryBoundary query={records} loading="Searching records…">
             {(data) =>
               data.data.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No records match</h3>
-                </div>
+                <EmptyState title="No records match" />
               ) : (
                 <ul className="finding-list" aria-label="Search results">
                   {data.data.map((r) => (

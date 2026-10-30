@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response
 
-from app.core.http import ErrorResponse, no_store
+from app.core.http import error_responses, no_store
 from app.core.pagination import Page, PageNumber, PageSize
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.notifications.schemas import (
@@ -20,9 +20,7 @@ from app.modules.notifications.services import (
 router = APIRouter(
     prefix="/api/v1/notifications",
     tags=["Notifications"],
-    responses={
-        code: {"model": ErrorResponse} for code in (401, 403, 404, 422, 500, 503)
-    },
+    responses=error_responses(401, 403, 404, 422, 500, 503),
 )
 
 

@@ -3,7 +3,7 @@ from typing import cast
 from fastapi import APIRouter, Request, Response
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse, no_store
+from app.core.http import error_responses, no_store
 from app.core.rate_limit import rate_limit_by_ip
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.auth.schemas import CurrentUserResponse, DemoLogin, TokenResponse
@@ -17,22 +17,12 @@ from app.modules.auth.services import (
 router = APIRouter(
     prefix="/api/v1",
     tags=["Identity"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 422, 503),
 )
 demo_router = APIRouter(
     prefix="/api/v1/auth",
     tags=["Local demo authentication"],
-    responses={
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
-    },
+    responses=error_responses(401, 403, 422, 503),
 )
 
 

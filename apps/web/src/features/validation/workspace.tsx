@@ -3,15 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { EmptyState, ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination, QueryPagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { IntakeAssessmentPanel } from "@/features/intake/assessment-panel";
 import { useSubmissionContext } from "@/features/submissions/data";
 import { ReviewActivation } from "@/features/submissions/review-activation";
+import {
+  VALIDATION_STATUSES,
+  type ValidationStatus,
+} from "@/features/records/shared";
+import { useApiQuery, useScope } from "@/lib/api/hooks";
 import { ApiError, errorMessage, isUUID } from "@/lib/api/client";
+import { saveBlob } from "@/lib/download";
 import type { components } from "@/lib/api/generated";
+import { countValue, plain, valueObject, when } from "@/lib/format";
 import { findingGuidance, safeEvidence } from "./guidance";
 
 type Run = components["schemas"]["RunResponse"];
@@ -20,7 +27,6 @@ type Finding = components["schemas"]["FindingResponse"];
 type FindingPage = components["schemas"]["Page_FindingResponse_"];
 type RowPage = components["schemas"]["Page_RowResponse_"];
 type Batch = components["schemas"]["BatchResponse"];
-type Status = "VALID" | "FLAGGED" | "INCOMPLETE";
 type QueryState = {
   run_id?: string;
   run_page?: string;
@@ -35,14 +41,9 @@ type QueryState = {
 };
 
 const pageSize = 10;
-const validStatuses: Status[] = ["VALID", "FLAGGED", "INCOMPLETE"];
 const severityOptions = ["ERROR", "WARNING", "INFO"] as const;
 
-function numberValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function runStatusLabel(status: Status | null | undefined) {
+function runStatusLabel(status: ValidationStatus | null | undefined) {
   if (!status) return "Not run";
   return status === "VALID" ? "Valid · local checks" : status;
 }
@@ -104,8 +105,10 @@ export function ValidationWorkspace({
   const runPageNumber = stateNumber(query.run_page);
   const rowPageNumber = stateNumber(query.row_page);
   const findingPageNumber = stateNumber(query.finding_page);
-  const rowStatus = validStatuses.includes(query.row_status as Status)
-    ? (query.row_status as Status)
+  const rowStatus = VALIDATION_STATUSES.includes(
+    query.row_status as ValidationStatus,
+  )
+    ? (query.row_status as ValidationStatus)
     : "";
   const runFilters = {
     run_id: runId || undefined,
@@ -136,74 +139,57 @@ export function ValidationWorkspace({
     router.push(buildUrl(batchId, { ...current, ...changes }));
   };
 
-  const baseKey = [
-    "private",
-    session?.generation,
-    session?.user.id,
-    "validation",
-    batchId,
-  ];
-  const batchQuery = useQuery({
-    queryKey: [...baseKey, "batch"],
-    enabled: !!session && isUUID(batchId),
-    queryFn: ({ signal }) =>
-      request<Batch>(`/submissions/${batchId}`, { signal }),
-  });
-  const runs = useQuery({
-    queryKey: [...baseKey, "runs", runPageNumber],
-    enabled: !!session && isUUID(batchId),
-    queryFn: ({ signal }) =>
-      request<RunPage>(
-        `/submissions/${batchId}/validation-runs?page=${runPageNumber}&page_size=${pageSize}`,
-        { signal },
-      ),
-  });
-  const selectedRun = useQuery({
-    queryKey: [...baseKey, "run", runId],
-    enabled: !!session && isUUID(batchId) && isUUID(runId),
-    queryFn: ({ signal }) =>
-      request<Run>(`/submissions/${batchId}/validation-runs/${runId}`, {
-        signal,
-      }),
-  });
-  const rows = useQuery({
-    queryKey: [...baseKey, "rows", runId, rowPageNumber, rowStatus],
-    enabled: !!session && isUUID(batchId) && isUUID(runId),
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        run_id: runId,
-        page: String(rowPageNumber),
-        page_size: String(pageSize),
-      });
-      if (rowStatus) params.set("status", rowStatus);
-      return request<RowPage>(`/submissions/${batchId}/rows?${params}`, {
-        signal,
-      });
+  const baseKey = useScope("validation", batchId);
+  const batchQuery = useApiQuery<Batch>(
+    [...baseKey, "batch"],
+    `/submissions/${batchId}`,
+    {
+      enabled: isUUID(batchId),
     },
-  });
-  const findings = useQuery({
-    queryKey: [...baseKey, "findings", runId, findingFilters],
-    enabled: !!session && isUUID(batchId) && isUUID(runId),
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        run_id: runId,
-        page: String(findingPageNumber),
-        page_size: String(pageSize),
-      });
-      if (findingFilters.finding_rule)
-        params.set("rule_code", findingFilters.finding_rule);
-      if (findingFilters.finding_severity)
-        params.set("severity", findingFilters.finding_severity);
-      if (findingFilters.finding_classification)
-        params.set("classification", findingFilters.finding_classification);
-      return request<FindingPage>(
-        `/submissions/${batchId}/findings?${params}`,
-        {
-          signal,
-        },
-      );
-    },
-  });
+  );
+  const runs = useApiQuery<RunPage>(
+    [...baseKey, "runs", runPageNumber],
+    `/submissions/${batchId}/validation-runs?page=${runPageNumber}&page_size=${pageSize}`,
+    { enabled: isUUID(batchId) },
+  );
+  const selectedRun = useApiQuery<Run>(
+    [...baseKey, "run", runId],
+    `/submissions/${batchId}/validation-runs/${runId}`,
+    { enabled: isUUID(batchId) && isUUID(runId) },
+  );
+  const rowsPath = (() => {
+    const params = new URLSearchParams({
+      run_id: runId,
+      page: String(rowPageNumber),
+      page_size: String(pageSize),
+    });
+    if (rowStatus) params.set("status", rowStatus);
+    return `/submissions/${batchId}/rows?${params}`;
+  })();
+  const rows = useApiQuery<RowPage>(
+    [...baseKey, "rows", runId, rowPageNumber, rowStatus],
+    rowsPath,
+    { enabled: isUUID(batchId) && isUUID(runId) },
+  );
+  const findingsPath = (() => {
+    const params = new URLSearchParams({
+      run_id: runId,
+      page: String(findingPageNumber),
+      page_size: String(pageSize),
+    });
+    if (findingFilters.finding_rule)
+      params.set("rule_code", findingFilters.finding_rule);
+    if (findingFilters.finding_severity)
+      params.set("severity", findingFilters.finding_severity);
+    if (findingFilters.finding_classification)
+      params.set("classification", findingFilters.finding_classification);
+    return `/submissions/${batchId}/findings?${params}`;
+  })();
+  const findings = useApiQuery<FindingPage>(
+    [...baseKey, "findings", runId, findingFilters],
+    findingsPath,
+    { enabled: isUUID(batchId) && isUUID(runId) },
+  );
 
   const validate = useMutation({
     mutationFn: () =>
@@ -278,12 +264,7 @@ export function ValidationWorkspace({
       download(`/submissions/${batchId}/feedback.csv?run_id=${runId}`, signal),
     retry: false,
     onSuccess: ({ blob, filename }) => {
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      saveBlob({ blob, filename });
       setAnnouncement("Masked feedback CSV downloaded.");
     },
   });
@@ -375,16 +356,11 @@ export function ValidationWorkspace({
     typeof currentOverlaps === "number";
   const findingCounts = useMemo(() => {
     const summary = selectedRun.data?.summary;
-    const recordCounts = summary?.record_status_counts;
-    const asRecord = (value: unknown): Record<string, unknown> | null =>
-      typeof value === "object" && value !== null
-        ? (value as Record<string, unknown>)
-        : null;
-    const counts = asRecord(recordCounts);
+    const counts = valueObject(summary?.record_status_counts);
     return {
-      valid: numberValue(counts?.VALID),
-      flagged: numberValue(counts?.FLAGGED),
-      incomplete: numberValue(counts?.INCOMPLETE),
+      valid: countValue(counts?.VALID),
+      flagged: countValue(counts?.FLAGGED),
+      incomplete: countValue(counts?.INCOMPLETE),
     };
   }, [selectedRun.data]);
   const submissionContext = useSubmissionContext(
@@ -559,13 +535,9 @@ export function ValidationWorkspace({
         ) : runs.isError ? (
           <ErrorPanel error={runs.error} retry={() => void runs.refetch()} />
         ) : runs.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No validation run yet</h3>
-            <p>
-              The uploaded candidate is stored, but has not been locally
-              checked.
-            </p>
-          </div>
+          <EmptyState title="No validation run yet">
+            The uploaded candidate is stored, but has not been locally checked.
+          </EmptyState>
         ) : (
           <>
             <div className="run-list">
@@ -593,11 +565,7 @@ export function ValidationWorkspace({
                         ? "Initial validation"
                         : "Officer revalidation"}
                     </strong>
-                    <small>
-                      <time dateTime={run.completed_at}>
-                        {new Date(run.completed_at).toLocaleString()}
-                      </time>
-                    </small>
+                    <small>{when(run.completed_at)}</small>
                   </span>
                   <span className="run-rule">{run.ruleset_version}</span>
                   <span
@@ -669,11 +637,7 @@ export function ValidationWorkspace({
               </div>
               <div>
                 <span>Evaluated</span>
-                <strong>
-                  <time dateTime={selectedRun.data.evaluated_at}>
-                    {new Date(selectedRun.data.evaluated_at).toLocaleString()}
-                  </time>
-                </strong>
+                <strong>{when(selectedRun.data.evaluated_at)}</strong>
               </div>
               <div>
                 <span>Candidate records</span>
@@ -683,7 +647,7 @@ export function ValidationWorkspace({
               <div>
                 <span>Candidate active rows</span>
                 <strong>
-                  {numberValue(
+                  {countValue(
                     selectedRun.data.summary.candidate_demo_active_records,
                   ) ?? "Unavailable"}
                 </strong>
@@ -727,7 +691,7 @@ export function ValidationWorkspace({
               >
                 {pinnedSettings.map(([key, value]) => (
                   <div key={key}>
-                    <dt>{key.replaceAll("_", " ")}</dt>
+                    <dt>{plain(key)}</dt>
                     <dd>{String(value)}</dd>
                   </div>
                 ))}
@@ -776,7 +740,7 @@ export function ValidationWorkspace({
                   }
                 >
                   <option value="">All statuses</option>
-                  {validStatuses.map((status) => (
+                  {VALIDATION_STATUSES.map((status) => (
                     <option key={status} value={status}>
                       {runStatusLabel(status)}
                     </option>
@@ -792,13 +756,10 @@ export function ValidationWorkspace({
                 retry={() => void rows.refetch()}
               />
             ) : rows.data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No records match this view</h3>
-                <p>
-                  Try another status filter. Original submitted rows remain
-                  unchanged.
-                </p>
-              </div>
+              <EmptyState title="No records match this view">
+                Try another status filter. Original submitted rows remain
+                unchanged.
+              </EmptyState>
             ) : (
               <div
                 className="table-scroll"
@@ -994,14 +955,11 @@ export function ValidationWorkspace({
                 retry={() => void findings.refetch()}
               />
             ) : findings.data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No findings match these filters</h3>
-                <p>
-                  This means no findings were returned for the selected run and
-                  filters. Valid means local checks only, never official
-                  verification.
-                </p>
-              </div>
+              <EmptyState title="No findings match these filters">
+                This means no findings were returned for the selected run and
+                filters. Valid means local checks only, never official
+                verification.
+              </EmptyState>
             ) : (
               <div className="finding-list">
                 {findings.data.data.map((finding: Finding) => {
@@ -1088,9 +1046,7 @@ export function ValidationWorkspace({
                             ? finding.evidence.source_row_number
                             : "grouped"}
                         </span>
-                        <time dateTime={finding.evaluated_at}>
-                          {new Date(finding.evaluated_at).toLocaleString()}
-                        </time>
+                        {when(finding.evaluated_at)}
                       </footer>
                     </article>
                   );

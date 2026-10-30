@@ -9,15 +9,18 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import APIError, ErrorResponse, no_store, not_found
+from app.core.http import APIError, error_responses, no_store, not_found
 from app.core.idempotency import IDEMPOTENCY_KEY_PATTERN
 from app.core.pagination import Page, PageNumber, PageSize, paginate, paginate_list
 from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
-from app.modules.auth.models import Role
 from app.modules.institutions.models import Programme
 from app.modules.institutions.schemas import AcademicYear
-from app.modules.institutions.services import scoped_institution, scoped_programme
+from app.modules.institutions.services import (
+    forced_institution_id,
+    scoped_institution,
+    scoped_programme,
+)
 from app.modules.submissions.activation import (
     activate,
     create_review,
@@ -59,10 +62,7 @@ from app.modules.validation.services import findings_for, record_statuses, selec
 router = APIRouter(
     prefix="/api/v1/submissions",
     tags=["Candidate submissions"],
-    responses={
-        code: {"model": ErrorResponse}
-        for code in (400, 401, 403, 404, 408, 409, 413, 422, 500, 503)
-    },
+    responses=error_responses(400, 401, 403, 404, 408, 409, 413, 422, 500, 503),
 )
 IdempotencyKey = Annotated[
     str | None,
@@ -272,10 +272,7 @@ def history(
     page_size: PageSize = 20,
 ) -> Page[BatchResponse]:
     require_submission_role(user)
-    if user.role == Role.INSTITUTION_ADMIN:
-        if institution_id is not None and institution_id != user.institution_id:
-            raise not_found()
-        institution_id = user.institution_id
+    institution_id = forced_institution_id(user, institution_id)
     if institution_id is not None:
         scoped_institution(session, user, institution_id)
         if programme_id is not None:
