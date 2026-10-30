@@ -1,15 +1,18 @@
 from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import APIError, ErrorResponse
-from app.core.pagination import Page, Pagination, paginate
+from app.core.http import APIError, ErrorResponse, no_store, not_found
+from app.core.idempotency import IDEMPOTENCY_KEY_PATTERN
+from app.core.pagination import Page, PageNumber, PageSize, paginate, paginate_list
+from app.core.rate_limit import rate_limit
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.auth.models import Role
 from app.modules.institutions.models import Programme
@@ -23,7 +26,13 @@ from app.modules.submissions.activation import (
     scoped_review,
 )
 from app.modules.submissions.models import StudentRecordVersion, SubmissionBatch
-from app.modules.submissions.parsing import HEADERS, parse_csv, read_multipart
+from app.modules.submissions.parsing import (
+    HEADERS,
+    detect_format,
+    parse_csv,
+    parse_xlsx,
+    read_multipart,
+)
 from app.modules.submissions.schemas import (
     ActivationRequest,
     ActivationResponse,
@@ -36,10 +45,12 @@ from app.modules.submissions.schemas import (
 )
 from app.modules.submissions.services import (
     describe_batches,
+    idempotent_replay,
     persist_candidate,
     require_submission_role,
     row_response,
     scoped_batch,
+    upload_fingerprint,
     upload_scope,
 )
 from app.modules.validation.schemas import RecordStatus
@@ -53,8 +64,18 @@ router = APIRouter(
         for code in (400, 401, 403, 404, 408, 409, 413, 422, 500, 503)
     },
 )
-PageNumber = Annotated[int, Query(ge=1)]
-PageSize = Annotated[int, Query(ge=1, le=100)]
+IdempotencyKey = Annotated[
+    str | None,
+    Header(
+        pattern=IDEMPOTENCY_KEY_PATTERN,
+        description=(
+            "Optional. Repeating a key with the same file and scope returns the "
+            "original batch (HTTP 200, Idempotent-Replayed: true) without a new "
+            "batch or audit event; the same key with different input is 409 "
+            "IDEMPOTENCY_KEY_REUSED. Keys are scoped per institution."
+        ),
+    ),
+]
 SnapshotSession = Annotated[Session, Depends(get_snapshot_session)]
 ActivationSession = Annotated[Session, Depends(get_activation_session)]
 MULTIPART_SCHEMA = {
@@ -92,10 +113,6 @@ MULTIPART_SCHEMA = {
 }
 
 
-def no_store(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
-
-
 @router.get("/upload-policy", response_model=UploadPolicyResponse)
 def upload_policy(
     request: Request, response: Response, user: CurrentUser
@@ -112,7 +129,12 @@ def upload_policy(
     )
 
 
-@router.post("/{batch_id}/reviews", response_model=ReviewResponse, status_code=201)
+@router.post(
+    "/{batch_id}/reviews",
+    response_model=ReviewResponse,
+    status_code=201,
+    dependencies=[rate_limit("reviews")],
+)
 def review_candidate(
     batch_id: UUID,
     body: ReviewRequest,
@@ -145,7 +167,11 @@ def review_detail(
     return result
 
 
-@router.post("/{batch_id}/activate", response_model=ActivationResponse)
+@router.post(
+    "/{batch_id}/activate",
+    response_model=ActivationResponse,
+    dependencies=[rate_limit("reviews")],
+)
 def activate_candidate(
     batch_id: UUID,
     body: ActivationRequest,
@@ -163,24 +189,73 @@ def activate_candidate(
     status_code=201,
     response_model=UploadResponse,
     openapi_extra=MULTIPART_SCHEMA,
+    dependencies=[rate_limit("uploads")],
+    responses={200: {"model": UploadResponse, "description": "Idempotent replay"}},
     description=(
-        "Synthetic demo data only. Creates an unvalidated, inactive candidate snapshot."
+        "Synthetic demo data only. Creates an unvalidated, inactive candidate "
+        "snapshot from a CSV or XLSX file. An idempotent replay returns the "
+        "original body with status 200 instead of 201."
     ),
 )
 async def upload(
-    request: Request, response: Response, user: CurrentUser, session: DatabaseSession
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+    session: DatabaseSession,
+    idempotency_key: IdempotencyKey = None,
 ) -> UploadResponse:
     require_submission_role(user, uploading=True)
     settings = cast(Settings, request.app.state.settings)
     context, data, filename, deadline = await read_multipart(request, settings)
 
-    # Database/CSV work is synchronous, executed off the event loop; never queued.
-    def process() -> UploadResponse:
+    # Database/file work is synchronous, executed off the event loop; never queued.
+    def process() -> tuple[UploadResponse, bool]:
         upload_scope(session, user, context)
-        rows = parse_csv(data, settings, deadline)
-        return persist_candidate(session, user, context, data, filename, rows, deadline)
+        idempotency = None
+        if idempotency_key is not None:
+            idempotency = (idempotency_key, upload_fingerprint(data, context))
+            replay = idempotent_replay(session, context.institution_id, *idempotency)
+            if replay is not None:
+                return replay, True
+        source_format = detect_format(data, filename)
+        rows = (
+            parse_xlsx(data, settings, deadline)
+            if source_format == "xlsx"
+            else parse_csv(data, settings, deadline)
+        )
+        try:
+            return (
+                persist_candidate(
+                    session,
+                    user,
+                    context,
+                    data,
+                    filename,
+                    rows,
+                    deadline,
+                    source=f"{source_format.upper()}_UPLOAD",
+                    idempotency=idempotency,
+                ),
+                False,
+            )
+        except IntegrityError as error:
+            # A concurrent identical request won the unique index: return its batch.
+            constraint = getattr(error.orig, "diag", None)
+            if (
+                idempotency is None
+                or getattr(constraint, "constraint_name", None)
+                != "uq_batch_idempotency"
+            ):
+                raise
+            replay = idempotent_replay(session, context.institution_id, *idempotency)
+            if replay is None:
+                raise
+            return replay, True
 
-    result = await run_in_threadpool(process)
+    result, replayed = await run_in_threadpool(process)
+    if replayed:
+        response.status_code = 200
+        response.headers["Idempotent-Replayed"] = "true"
     no_store(response)
     return result
 
@@ -199,7 +274,7 @@ def history(
     require_submission_role(user)
     if user.role == Role.INSTITUTION_ADMIN:
         if institution_id is not None and institution_id != user.institution_id:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
         institution_id = user.institution_id
     if institution_id is not None:
         scoped_institution(session, user, institution_id)
@@ -208,7 +283,7 @@ def history(
     elif programme_id is not None:
         # Officer-only path: still validate the programme exists before filtering.
         if session.get(Programme, programme_id) is None:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+            raise not_found()
     statement = select(SubmissionBatch).order_by(
         SubmissionBatch.received_at.desc(), SubmissionBatch.id.desc()
     )
@@ -263,8 +338,9 @@ def rows(
         for record in records
         if status is None or statuses.get(record.id, "VALID") == status
     ]
+    window = paginate_list(selected, page, page_size)
     results = []
-    for record in selected[(page - 1) * page_size : page * page_size]:
+    for record in window.data:
         result = row_response(record)
         result.validation_status = statuses.get(record.id, "VALID") if run else None
         result.validation_run_id = run.id if run else None
@@ -272,5 +348,5 @@ def rows(
     no_store(response)
     return Page[RowResponse](
         data=results,
-        pagination=Pagination(page=page, page_size=page_size, total=len(selected)),
+        pagination=window.pagination,
     )

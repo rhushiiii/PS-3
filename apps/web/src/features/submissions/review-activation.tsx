@@ -8,6 +8,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
 import { ApiError, errorMessage, isUUID } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
+import { humanize } from "@/lib/format";
 
 type Batch = components["schemas"]["BatchResponse"];
 type Run = components["schemas"]["RunResponse"];
@@ -32,12 +33,7 @@ function count(value: unknown): string {
   return result === null ? "Unavailable" : result.toLocaleString();
 }
 
-function label(value: string): string {
-  return value
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/^./, (c) => c.toUpperCase());
-}
+const label = humanize;
 
 function nestedCount(value: unknown, key: string): unknown {
   return object(value)?.[key];

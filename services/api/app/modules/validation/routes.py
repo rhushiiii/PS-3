@@ -6,10 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.http import ErrorResponse
-from app.core.pagination import Page, Pagination
+from app.core.http import ErrorResponse, no_store
+from app.core.pagination import Page, PageNumber, PageSize, Pagination, paginate_list
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
-from app.modules.submissions.routes import PageNumber, PageSize, no_store
 from app.modules.submissions.services import scoped_batch
 from app.modules.validation.models import ValidationRun
 from app.modules.validation.schemas import (
@@ -142,13 +141,11 @@ def findings(
         and (severity is None or item.severity == severity)
         and (classification is None or item.classification == classification)
     ]
+    window = paginate_list(selected, page, page_size)
     no_store(response)
     return Page[FindingResponse](
-        data=[
-            finding_response(item, description, user)
-            for item in selected[(page - 1) * page_size : page * page_size]
-        ],
-        pagination=Pagination(page=page, page_size=page_size, total=len(selected)),
+        data=[finding_response(item, description, user) for item in window.data],
+        pagination=window.pagination,
     )
 
 

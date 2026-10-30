@@ -8,9 +8,10 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+from conftest import truncate_all
 from fastapi.testclient import TestClient
 from psycopg import OperationalError as DriverOperationalError
-from sqlalchemy import Engine, delete, event, func, select, text, update
+from sqlalchemy import Engine, delete, event, func, select, update
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 from test_validation import csv_data, fields, run_validation, upload
@@ -598,21 +599,6 @@ def prepared_reviews(
     return result
 
 
-def cleanup(engine: Engine) -> None:
-    assert (engine.url.database or "").startswith("sih26263_m1_test_")
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "TRUNCATE submission_reviews, apaar_verifications, "
-                "case_events, case_records, review_cases, "
-                "validation_findings, validation_runs, "
-                "student_record_versions, submission_batches, submission_scopes, "
-                "audit_events, users, "
-                "intake_rules, programmes, institutions"
-            )
-        )
-
-
 @pytest.mark.parametrize("different_scopes", [False, True])
 def test_real_concurrent_activations(
     db_engine: Engine, demo_settings: Settings, different_scopes: bool
@@ -645,7 +631,7 @@ def test_real_concurrent_activations(
                 .where(AuditEvent.action == "SUBMISSION_ACTIVATED")
             ) == (2 if different_scopes else 1)
     finally:
-        cleanup(db_engine)
+        truncate_all(db_engine)
 
 
 def test_nowait_conflict_does_not_lock_other_scope(
@@ -678,7 +664,7 @@ def test_nowait_conflict_does_not_lock_other_scope(
                 == 1
             )
     finally:
-        cleanup(db_engine)
+        truncate_all(db_engine)
 
 
 def test_peer_activation_stales_assessment_without_blocking_candidate(

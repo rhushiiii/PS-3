@@ -1,0 +1,387 @@
+{
+  "manifest_version": "1",
+  "label": "SIMULATED / DEMO DATA - fictional institutions and learners; synthetic 12-digit APAAR-like numbers only; not real identifiers",
+  "purpose": "Ground truth for the Phase 10 end-to-end demonstration (python -m app.demo_scenario) and tests/test_demo_e2e.py. Rule values are the seeded DEMO values (REGULAR cap 3, every other category cap 1, rule version DEMO-v1); they are not official policy.",
+  "academic_year": "2026-27",
+  "programme_code": "DEMO-COMP",
+  "ruleset_version": "LOCAL-DEMO-v1",
+  "intake_rule_version": "DEMO-v1",
+  "finding_key": "A finding is identified by (rule_code, discriminator, sorted source_rows, severity, classification). discriminator is evidence.category, else evidence.match_context, else field_name, else empty. source_rows are file line numbers (header is line 1). 'evidence' lists exact evidence values to compare.",
+  "source_csv": [
+    "01_cedar_valid.csv",
+    "02_cedar_apaar_issues.csv",
+    "03_cedar_duplicates.csv",
+    "04_maple_peer.csv",
+    "05_cedar_intake_excess_and_peer_match.csv",
+    "06_cedar_missing_population.csv",
+    "07_cedar_corrected.csv",
+    "08_willow_valid.csv"
+  ],
+  "xlsx_note": "08_willow_valid.xlsx is not committed: python -m app.demo_scenario generates it in memory from 08_willow_valid.csv (or writes it with --write-xlsx PATH).",
+  "scenarios": {
+    "a_valid_records": [
+      "01_cedar_valid.csv",
+      "04_maple_peer.csv",
+      "08_willow_valid.xlsx"
+    ],
+    "b_missing_and_malformed_apaar": [
+      "02_cedar_apaar_issues.csv"
+    ],
+    "c_in_batch_duplicates": [
+      "03_cedar_duplicates.csv"
+    ],
+    "d_cross_institution_duplicate": [
+      "04_maple_peer.csv",
+      "05_cedar_intake_excess_and_peer_match.csv"
+    ],
+    "e_intake_excess": [
+      "05_cedar_intake_excess_and_peer_match.csv"
+    ],
+    "f_missing_population": [
+      "06_cedar_missing_population.csv"
+    ],
+    "g_correction": [
+      "07_cedar_corrected.csv"
+    ]
+  },
+  "declared_total": {
+    "cedar": 6
+  },
+  "files": {
+    "01_cedar_valid.csv": {
+      "institution": "cedar",
+      "rows": 6,
+      "findings": []
+    },
+    "02_cedar_apaar_issues.csv": {
+      "institution": "cedar",
+      "rows": 5,
+      "feedback_rows": 5,
+      "findings": [
+        {
+          "rule_code": "REQUIRED_FIELD_MISSING",
+          "discriminator": "apaar_id",
+          "source_rows": [
+            3
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        },
+        {
+          "rule_code": "INVALID_APAAR_FORMAT",
+          "discriminator": "apaar_id",
+          "source_rows": [
+            4
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        },
+        {
+          "rule_code": "INVALID_APAAR_FORMAT",
+          "discriminator": "apaar_id",
+          "source_rows": [
+            5
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        },
+        {
+          "rule_code": "INVALID_APAAR_FORMAT",
+          "discriminator": "apaar_id",
+          "source_rows": [
+            6
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        }
+      ]
+    },
+    "03_cedar_duplicates.csv": {
+      "institution": "cedar",
+      "rows": 5,
+      "activation": "BLOCKED",
+      "findings": [
+        {
+          "rule_code": "DUPLICATE_COLLEGE_STUDENT_ID",
+          "discriminator": "",
+          "source_rows": [
+            3,
+            4
+          ],
+          "severity": "ERROR",
+          "classification": "ACTIVATION_BLOCKING",
+          "evidence": {
+            "record_count": 2
+          }
+        },
+        {
+          "rule_code": "DUPLICATE_IN_BATCH",
+          "discriminator": "",
+          "source_rows": [
+            5,
+            6
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE",
+          "evidence": {
+            "record_count": 2
+          }
+        }
+      ]
+    },
+    "04_maple_peer.csv": {
+      "institution": "maple",
+      "rows": 3,
+      "findings": []
+    },
+    "05_cedar_intake_excess_and_peer_match.csv": {
+      "institution": "cedar",
+      "rows": 6,
+      "findings": [
+        {
+          "rule_code": "INTAKE_EXCEEDED",
+          "discriminator": "REGULAR",
+          "source_rows": [],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE",
+          "evidence": {
+            "candidate_active_rows": 4,
+            "configured_capacity": 3,
+            "rule_version": "DEMO-v1",
+            "source_label": "DEMO",
+            "counts_uncertain": false
+          }
+        },
+        {
+          "rule_code": "POTENTIAL_CROSS_INSTITUTION_DUPLICATE",
+          "discriminator": "CURRENT_ACTIVE",
+          "source_rows": [
+            6
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        },
+        {
+          "rule_code": "REQUIRED_FIELD_MISSING",
+          "discriminator": "apaar_id",
+          "source_rows": [
+            7
+          ],
+          "severity": "WARNING",
+          "classification": "REVIEWABLE"
+        }
+      ],
+      "intake": {
+        "categories": {
+          "REGULAR": {
+            "approved_seats": 3,
+            "candidate_active_count": 4,
+            "current_active_count": 3,
+            "exceeded": true,
+            "excess": 1,
+            "calculation": "candidate ACTIVE 4 > approved 3 (rule DEMO-v1, REGULAR) = excess 1"
+          }
+        },
+        "findings": [
+          {
+            "rule_id": "INTAKE_CATEGORY_EXCEEDED",
+            "category": "REGULAR",
+            "calculation": "candidate ACTIVE 4 > approved 3 (rule DEMO-v1, REGULAR) = excess 1"
+          }
+        ],
+        "missing_population": {
+          "status": "COMPARED",
+          "declared_total": 6,
+          "candidate_record_count": 6,
+          "shortfall": 0,
+          "discrepancy": false,
+          "calculation": "candidate records 6 >= declared 6 (DEMO declaration) = shortfall 0"
+        }
+      }
+    },
+    "06_cedar_missing_population.csv": {
+      "institution": "cedar",
+      "rows": 4,
+      "findings": [],
+      "intake": {
+        "categories": {},
+        "findings": [
+          {
+            "rule_id": "MISSING_POPULATION_DISCREPANCY",
+            "calculation": "candidate records 4 < declared 6 (DEMO declaration) = shortfall 2"
+          },
+          {
+            "rule_id": "REMOVED_RECORDS_UNEXPLAINED",
+            "calculation": "2 previously ACTIVE record(s) omitted; candidate records 4 < declared 6 = shortfall 2"
+          }
+        ],
+        "missing_population": {
+          "status": "COMPARED",
+          "declared_total": 6,
+          "candidate_record_count": 4,
+          "shortfall": 2,
+          "discrepancy": true,
+          "calculation": "candidate records 4 < declared 6 (DEMO declaration) = shortfall 2"
+        }
+      }
+    },
+    "07_cedar_corrected.csv": {
+      "institution": "cedar",
+      "rows": 6,
+      "findings": [],
+      "intake": {
+        "categories": {
+          "REGULAR": {
+            "approved_seats": 3,
+            "candidate_active_count": 3,
+            "exceeded": false,
+            "excess": 0
+          }
+        },
+        "findings": [],
+        "missing_population": {
+          "status": "COMPARED",
+          "declared_total": 6,
+          "candidate_record_count": 6,
+          "shortfall": 0,
+          "discrepancy": false
+        }
+      }
+    },
+    "08_willow_valid.xlsx": {
+      "institution": "willow",
+      "rows": 3,
+      "generated_from": "08_willow_valid.csv",
+      "findings": []
+    }
+  },
+  "integrity_signals": {
+    "intake_calculation": "ACTIVE 4 > approved 3 (rule DEMO-v1, REGULAR) = excess 1",
+    "before_cases": [
+      "CMP_INTAKE_EXCEEDED",
+      "CMP_MISSING_POPULATION",
+      "CMP_UNUSUAL_SNAPSHOT_CHANGE",
+      "DQ_MISSING_FIELDS",
+      "IDU_CROSS_INSTITUTION_DUPLICATE"
+    ],
+    "after_overdue_case": [
+      "CMP_INTAKE_EXCEEDED",
+      "CMP_MISSING_POPULATION",
+      "CMP_UNUSUAL_SNAPSHOT_CHANGE",
+      "DQ_MISSING_FIELDS",
+      "IDU_CROSS_INSTITUTION_DUPLICATE",
+      "CMP_OVERDUE_CASES"
+    ]
+  },
+  "rerun_carryover": {
+    "note": "On a database that already holds an earlier run, INFO-severity cross-institution history matches and cumulative case signals caused by that run are counted as carryover, not false positives.",
+    "validation": [
+      "POTENTIAL_CROSS_INSTITUTION_DUPLICATE (severity INFO)"
+    ],
+    "signals": [
+      "CMP_OVERDUE_CASES",
+      "CMP_REPEATED_CORRECTIONS"
+    ]
+  },
+  "case_timeline": [
+    "OPENED",
+    "ASSIGNED",
+    "START_REVIEW",
+    "REQUEST_CORRECTION",
+    "CORRECTION_RECEIVED",
+    "COMMENT",
+    "START_REVIEW",
+    "RESOLVED",
+    "CLOSED"
+  ],
+  "case_totals_delta": {
+    "all": 2,
+    "open": 1,
+    "overdue": 1,
+    "escalated": 1
+  },
+  "final_state": {
+    "cedar": {
+      "declared": 6,
+      "active": 5,
+      "active_by_category": {
+        "REGULAR": 3,
+        "SUPERNUMERARY": 1,
+        "NRI": 1
+      },
+      "utilisation": {
+        "REGULAR": [
+          3,
+          3,
+          false,
+          0
+        ],
+        "SUPERNUMERARY": [
+          1,
+          1,
+          false,
+          0
+        ],
+        "NRI": [
+          1,
+          1,
+          false,
+          0
+        ],
+        "OCI": [
+          1,
+          0,
+          false,
+          0
+        ],
+        "FOREIGN_NATIONAL": [
+          1,
+          0,
+          false,
+          0
+        ]
+      },
+      "pending_candidates": 3
+    },
+    "maple": {
+      "declared": 3,
+      "active": 3,
+      "active_by_category": {
+        "REGULAR": 2,
+        "NRI": 1
+      }
+    },
+    "willow": {
+      "declared": 3,
+      "active": 3,
+      "active_by_category": {
+        "REGULAR": 2,
+        "NRI": 1
+      }
+    }
+  },
+  "permitted_claims": [
+    "institution_name",
+    "programme_code",
+    "academic_year",
+    "admission_category",
+    "enrollment_status",
+    "issued_at",
+    "expires_at"
+  ],
+  "audit_expectations": {
+    "SUBMISSION_UPLOADED": "cedar_admin",
+    "SUBMISSION_VALIDATED": "cedar_admin",
+    "SUBMISSION_REVIEW_CREATED": "cedar_admin",
+    "SUBMISSION_ACTIVATED": "cedar_admin",
+    "INTAKE_DECLARATION_CREATED": "cedar_admin",
+    "INTAKE_ASSESSMENT_CREATED": "demo_officer",
+    "CASE_OPENED": "demo_officer",
+    "CASE_ASSIGNED": "demo_officer",
+    "CASE_REQUEST_CORRECTION": "demo_officer_2",
+    "CASE_RESOLVED": "demo_officer_2",
+    "CASE_CLOSED": "demo_officer_2",
+    "CREDENTIAL_ISSUED": "cedar_admin",
+    "CREDENTIAL_REVOKED": "demo_officer"
+  }
+}

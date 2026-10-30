@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_snapshot_session
-from app.core.http import APIError, ErrorResponse
+from app.core.http import APIError, ErrorResponse, no_store
+from app.core.pagination import PageNumber, PageSize
 from app.modules.auth.dependencies import (
     CurrentUser,
     DatabaseSession,
@@ -40,8 +41,6 @@ router = APIRouter(
         503: {"model": ErrorResponse},
     },
 )
-PageNumber = Annotated[int, Query(ge=1)]
-PageSize = Annotated[int, Query(ge=1, le=100)]
 
 
 @router.get("/{institution_id}/summary", response_model=InstitutionSummary)
@@ -58,7 +57,7 @@ def summary(
     result = current_summary(
         session, user, institution_id, academic_year, programme_id, page, page_size
     )
-    response.headers["Cache-Control"] = "no-store"
+    no_store(response)
     return result
 
 

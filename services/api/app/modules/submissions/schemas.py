@@ -36,6 +36,7 @@ class UploadPolicyResponse(BaseModel):
     required_headers: list[str]
     encoding: Literal["UTF-8"] = "UTF-8"
     accepts_utf8_bom: Literal[True] = True
+    accepted_formats: list[Literal["csv", "xlsx"]] = ["csv", "xlsx"]
     max_file_bytes: int
     max_rows: int
     receive_timeout_seconds: float

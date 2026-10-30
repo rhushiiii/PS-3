@@ -1,0 +1,6 @@
+college_student_id,student_name,apaar_id,academic_year,programme_code,admission_category,enrollment_status,enrollment_date
+CED-A01,Demo Learner Cedar A01,900000100101,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+CED-A02,Demo Learner Cedar A02,,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+CED-A03,Demo Learner Cedar A03,DEMO-BAD-APAAR,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-02
+CED-A04,Demo Learner Cedar A04,90000010010,2026-27,DEMO-COMP,NRI,ACTIVE,2026-08-02
+CED-A05,Demo Learner Cedar A05,9000001001O5,2026-27,DEMO-COMP,OCI,WITHDRAWN,2026-08-03

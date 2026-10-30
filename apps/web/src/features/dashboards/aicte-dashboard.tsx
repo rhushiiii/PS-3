@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { InstitutionsRequiringReview } from "@/features/integrity/overview-table";
 import { useSession } from "@/features/auth/session";
+import { validAcademicYear } from "@/lib/academic-year";
 import { isUUID } from "@/lib/api/client";
 import type { components, paths } from "@/lib/api/generated";
 import {
@@ -19,12 +21,11 @@ import {
   prettyLabel,
   valueObject,
 } from "./components";
+import { useInstitutionOptions } from "@/features/institutions/options";
 
 type Summary = components["schemas"]["InstitutionSummary"];
 type Run = components["schemas"]["RunResponse"];
 type Batch = components["schemas"]["BatchResponse"];
-type InstitutionPage =
-  paths["/api/v1/institutions"]["get"]["responses"][200]["content"]["application/json"];
 type SubmissionPage =
   paths["/api/v1/submissions"]["get"]["responses"][200]["content"]["application/json"];
 
@@ -48,23 +49,17 @@ export function AicteDashboard() {
   const [regionDraft, setRegionDraft] = useState("");
   const [institutionDraft, setInstitutionDraft] = useState("");
   const [filterError, setFilterError] = useState("");
-  const validYear =
-    /^\d{4}-\d{2}$/.test(year) &&
-    Number(year.slice(-2)) === (Number(year.slice(0, 4)) + 1) % 100;
+  const validYear = validAcademicYear(year);
   const baseKey = [
     "private",
     session?.generation,
     session?.user.id,
     "aicte-dashboard",
   ];
-  const institutions = useQuery({
-    queryKey: [...baseKey, "institutions"],
-    enabled: !!session && (isOfficer || isManager),
-    queryFn: ({ signal }) =>
-      request<InstitutionPage>("/institutions?page=1&page_size=100", {
-        signal,
-      }),
-  });
+  const institutions = useInstitutionOptions(
+    [...baseKey, "institutions"],
+    !!session && (isOfficer || isManager),
+  );
   const allInstitutions = institutions.data?.data ?? [];
   const regions = [
     ...new Set(allInstitutions.map((item) => item.region)),
@@ -270,11 +265,7 @@ export function AicteDashboard() {
           year={yearDraft}
           setYear={setYearDraft}
           onApply={() => {
-            if (
-              !/^\d{4}-\d{2}$/.test(yearDraft) ||
-              Number(yearDraft.slice(-2)) !==
-                (Number(yearDraft.slice(0, 4)) + 1) % 100
-            ) {
+            if (!validAcademicYear(yearDraft)) {
               setFilterError(
                 "Enter a consecutive academic year, for example 2026-27.",
               );
@@ -673,6 +664,10 @@ export function AicteDashboard() {
               )}
             </section>
           </div>
+          <InstitutionsRequiringReview
+            canOpenInstitution={!!isOfficer}
+            initialYear={dashboardYear}
+          />
           <section className="panel dashboard-note-panel">
             <h2>
               {isManager

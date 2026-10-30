@@ -1,6 +1,58 @@
 # SIH26263 — Remaining Work
 
-Last updated: 28 October 2026.
+Last updated: 30 October 2026.
+
+## Master-plan execution (30 October 2026)
+
+The PRAVYA master plan (Phases 0–10) was executed in order. Where this section and
+older sections below disagree (for example Step 5F "staged", Phase 3/4 "planned"),
+this section reflects the current code. Student data is still synthetic only.
+
+| Phase | Result |
+| ----- | ------ |
+| 0 Audit | Feature matrix and baseline produced; baseline backend 268 passed with PostgreSQL |
+| 1 Core | Excel (.xlsx) upload, optional upload `Idempotency-Key`, CORS fix, formatting fix (migration 0007) |
+| 2 Cases | Priority/severity/due date, overdue + escalation, assignment, response and resolution reason, filters, in-app notifications (0008, 0009) |
+| 3 Dashboards | Manager analytics (`/analytics`), audit explorer (`/audit`), institution correction-request card, verifier workspace (`/verify`) |
+| 4 Registry | `/records` search and `/records/{id}` provenance, history, findings, cases |
+| 5 Intake | Rule changes with audit, declared totals, immutable assessments, what-if simulator (0010) |
+| 6 Integrity | Rule-based signals, score components, officer decisions (0011); no ML |
+| 7 Verification | Format vs identity separation, timeout/retry/idempotency, signed Ed25519 credentials, verifier log (0012) |
+| 8 Reports | CSV/XLSX/PDF reports reconciled with analytics, `/reports` page |
+| 9 Security | Rate limits, security headers, log redaction, body cap, route-access sweep test |
+| 10 Demo | `samples/demo/`, `python -m app.demo_scenario`, `tests/test_demo_e2e.py` |
+
+Verification actually run on 30 October 2026 (final pass, by the main session):
+
+- Backend `ruff check`, `ruff format --check` (124 files), `mypy` (124 files),
+  `pip check`: all clean.
+- Backend `pytest` without a test database: 149 passed, 506 skipped.
+- Backend `pytest` with a PostgreSQL 16.15 test database: **655 passed, 0 failed**.
+- Frontend `npm run lint`, `format:check`, `typecheck`, `api:check`: clean; `npm run build`:
+  exit 0, all new routes present.
+- Demo runner (reported by its subagent, plus the e2e test in the 655): 12/12 steps; validation
+  findings TP 9 / FP 0 / FN 0; intake calculations 56/56 exact; integrity signals
+  TP 11 / FP 0 / FN 0; report-vs-analytics 19/19 equal; 14/14 authorization checks; no raw
+  APAAR in 126 scanned responses.
+
+Known limitations and not done:
+
+- **No browser has been used on any UI built in this run.** The frontend is verified by lint,
+  typecheck and build only; a manual click-through, a keyboard/screen-reader audit and
+  mobile checks are still required. No automated UI suite exists (removed by user direction).
+- Tests ran against PostgreSQL 16.15, not the README's PostgreSQL 17; `alembic upgrade head`
+  was exercised by the migration tests and the demo runner, not against the Docker image.
+- Docs `03_DATA_MODEL.md` and `04_API_CONTRACT.md` have not been updated for the new tables
+  and routes (OpenAPI is the current contract). Decisions are in `09_DECISIONS_AND_ASSUMPTIONS.md`.
+- Rate limits are per process; credential key rotation, email notifications, QR image
+  rendering and real-data security (retention, encryption, consent) are not implemented.
+- Intake rule/declaration values, integrity severities/weights and thresholds are DEMO
+  assumptions, not official AICTE values. Simulated APAAR verification is not government
+  verification; no external integration is claimed.
+- Admin dashboards fetch the first 100 institutions/programmes; assessment/simulation result
+  shapes are loose objects in the generated types (local frontend types mirror the backend).
+- During the run, two subagents executed a read-only git command by mistake; nothing in the
+  repository was changed by them.
 
 This file summarizes the remaining work from the approved project documents and
 the latest verification results. It does not authorize implementation or replace

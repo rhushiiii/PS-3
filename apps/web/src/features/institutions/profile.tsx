@@ -4,10 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/features/auth/session";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
-import { Pagination } from "@/components/ui/pagination";
+import { ErrorPanel, Loading, QueryBoundary } from "@/components/ui/feedback";
+import { QueryPagination } from "@/components/ui/pagination";
 import type { components, paths } from "@/lib/api/generated";
 import { isUUID } from "@/lib/api/client";
+import { DeclaredTotalsPanel } from "@/features/intake/declarations-panel";
+import { IntegritySignalsPanel } from "@/features/integrity/panel";
+import { IntakeRulesPanel } from "@/features/intake/rules-panel";
+import { SimulatorPanel } from "@/features/intake/simulator-panel";
 
 type Institution = components["schemas"]["InstitutionResponse"];
 type Programmes =
@@ -68,137 +72,146 @@ export function InstitutionProfile({
           </Link>
         )}
       </div>
-      {institution.isPending ? (
-        <Loading label="Loading institution…" />
-      ) : institution.isError ? (
-        <ErrorPanel
-          error={institution.error}
-          retry={() => void institution.refetch()}
-        />
-      ) : (
-        <>
-          <section className="profile-card" aria-labelledby="institution-name">
-            <div className="institution-emblem" aria-hidden="true">
-              {institution.data.name
-                .replace("Demo ", "")
-                .slice(0, 2)
-                .toUpperCase()}
-            </div>
-            <div className="profile-identity">
-              <p className="tiny-label">SYNTHETIC INSTITUTION</p>
-              <h2 id="institution-name">{institution.data.name}</h2>
-              <p>{institution.data.permanent_id}</p>
-            </div>
-            <span
-              className={`status-badge ${institution.data.active ? "active" : "inactive"}`}
+      <QueryBoundary query={institution} loading="Loading institution…">
+        {(data) => (
+          <>
+            <section
+              className="profile-card"
+              aria-labelledby="institution-name"
             >
-              <span aria-hidden="true" />
-              {institution.data.active
-                ? "Active institution"
-                : "Inactive institution"}
-            </span>
-          </section>
-          <div className="metadata-grid">
-            <section className="metadata-item">
-              <span className="tiny-label">PERMANENT INSTITUTION ID</span>
-              <strong>{institution.data.permanent_id}</strong>
-            </section>
-            <section className="metadata-item">
-              <span className="tiny-label">REGION</span>
-              <strong>{institution.data.region.replaceAll("_", " ")}</strong>
-            </section>
-            <section className="metadata-item">
-              <span className="tiny-label">DATA CONTEXT</span>
-              <strong>Synthetic records</strong>
-            </section>
-          </div>
-          <section
-            className="panel"
-            aria-labelledby="programmes-title"
-            aria-busy={programmes.isFetching}
-          >
-            <header className="panel-heading">
-              <div>
-                <p className="eyebrow">ACADEMIC STRUCTURE</p>
-                <h2 id="programmes-title">
-                  Programmes{" "}
-                  {programmes.data && (
-                    <span className="count-pill">
-                      {programmes.data.pagination.total}
-                    </span>
-                  )}
-                </h2>
+              <div className="institution-emblem" aria-hidden="true">
+                {data.name.replace("Demo ", "").slice(0, 2).toUpperCase()}
               </div>
-              <span className="quiet-label">Institution-scoped records</span>
-            </header>
-            {programmes.isPending ? (
-              <Loading label="Loading programmes…" />
-            ) : programmes.isError ? (
-              <ErrorPanel
-                error={programmes.error}
-                retry={() => void programmes.refetch()}
-              />
-            ) : programmes.data.data.length === 0 ? (
-              <div className="empty-state">
-                <h3>No programmes found</h3>
-                <p>No programme records are available for this institution.</p>
+              <div className="profile-identity">
+                <p className="tiny-label">SYNTHETIC INSTITUTION</p>
+                <h2 id="institution-name">{data.name}</h2>
+                <p>{data.permanent_id}</p>
               </div>
-            ) : (
-              <div
-                className="table-scroll"
-                tabIndex={0}
-                role="region"
-                aria-label="Programme table, scroll horizontally on small screens"
+              <span
+                className={`status-badge ${data.active ? "active" : "inactive"}`}
               >
-                <table>
-                  <caption className="sr-only">
-                    Programmes belonging to {institution.data.name}
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Programme</th>
-                      <th scope="col">Programme code</th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {programmes.data.data.map((programme) => (
-                      <tr key={programme.id}>
-                        <td>
-                          <strong>{programme.name}</strong>
-                        </td>
-                        <td>
-                          <span className="code-label">{programme.code}</span>
-                        </td>
-                        <td>
-                          <span
-                            className={`status-badge ${programme.active ? "active" : "inactive"}`}
-                          >
-                            {programme.active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
+                <span aria-hidden="true" />
+                {data.active ? "Active institution" : "Inactive institution"}
+              </span>
+            </section>
+            <div className="metadata-grid">
+              <section className="metadata-item">
+                <span className="tiny-label">PERMANENT INSTITUTION ID</span>
+                <strong>{data.permanent_id}</strong>
+              </section>
+              <section className="metadata-item">
+                <span className="tiny-label">REGION</span>
+                <strong>{data.region.replaceAll("_", " ")}</strong>
+              </section>
+              <section className="metadata-item">
+                <span className="tiny-label">DATA CONTEXT</span>
+                <strong>Synthetic records</strong>
+              </section>
+            </div>
+            <section
+              className="panel"
+              aria-labelledby="programmes-title"
+              aria-busy={programmes.isFetching}
+            >
+              <header className="panel-heading">
+                <div>
+                  <p className="eyebrow">ACADEMIC STRUCTURE</p>
+                  <h2 id="programmes-title">
+                    Programmes{" "}
+                    {programmes.data && (
+                      <span className="count-pill">
+                        {programmes.data.pagination.total}
+                      </span>
+                    )}
+                  </h2>
+                </div>
+                <span className="quiet-label">Institution-scoped records</span>
+              </header>
+              {programmes.isPending ? (
+                <Loading label="Loading programmes…" />
+              ) : programmes.isError ? (
+                <ErrorPanel
+                  error={programmes.error}
+                  retry={() => void programmes.refetch()}
+                />
+              ) : programmes.data.data.length === 0 ? (
+                <div className="empty-state">
+                  <h3>No programmes found</h3>
+                  <p>
+                    No programme records are available for this institution.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="table-scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Programme table, scroll horizontally on small screens"
+                >
+                  <table>
+                    <caption className="sr-only">
+                      Programmes belonging to {data.name}
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Programme</th>
+                        <th scope="col">Programme code</th>
+                        <th scope="col">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {programmes.data && (
-              <Pagination
+                    </thead>
+                    <tbody>
+                      {programmes.data.data.map((programme) => (
+                        <tr key={programme.id}>
+                          <td>
+                            <strong>{programme.name}</strong>
+                          </td>
+                          <td>
+                            <span className="code-label">{programme.code}</span>
+                          </td>
+                          <td>
+                            <span
+                              className={`status-badge ${programme.active ? "active" : "inactive"}`}
+                            >
+                              {programme.active ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <QueryPagination
+                query={programmes}
                 page={page}
                 pageSize={10}
-                total={programmes.data.pagination.total}
-                busy={programmes.isFetching}
                 change={setPage}
               />
+            </section>
+            {session?.user.role !== "AICTE_MANAGER" && (
+              <IntakeRulesPanel
+                institutionId={institutionId}
+                canEdit={session?.user.role === "AICTE_OFFICER"}
+              />
             )}
-          </section>
-          <p className="data-note">
-            These are local synthetic institution records. They do not establish
-            official approval, enrolment totals or government verification.
-          </p>
-        </>
-      )}
+            {session?.user.role === "AICTE_OFFICER" && (
+              <>
+                <IntegritySignalsPanel
+                  institutionId={institutionId}
+                  canDecide
+                />
+                <DeclaredTotalsPanel institutionId={institutionId} />
+                <SimulatorPanel institutionId={institutionId} />
+              </>
+            )}
+            <p className="data-note">
+              These are local synthetic institution records. They do not
+              establish official approval, enrolment totals or government
+              verification.
+            </p>
+          </>
+        )}
+      </QueryBoundary>
     </>
   );
 }

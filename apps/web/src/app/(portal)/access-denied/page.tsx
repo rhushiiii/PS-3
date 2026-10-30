@@ -14,7 +14,7 @@ export default function AccessDenied() {
         authorization remains in force.
       </p>
       <div className="button-row">
-        {session && session.user.role !== "AUTHORIZED_VERIFIER" && (
+        {session && (
           <Link className="button primary" href={homeFor(session.user.role)}>
             Return to workspace
           </Link>

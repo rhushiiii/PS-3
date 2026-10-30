@@ -7,6 +7,7 @@ import { homeFor, useSession, type Role } from "@/features/auth/session";
 import { BrandMark } from "@/components/brand-mark";
 import { DataNotice, Loading } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
+import { NotificationBell } from "@/features/notifications/bell";
 
 const roleNames: Record<Role, string> = {
   INSTITUTION_ADMIN: "Institution administrator",
@@ -46,56 +47,114 @@ export function AppShell({ children }: { children: ReactNode }) {
     menu.current?.close();
   }, [pathname]);
   if (!session) return null;
-  const institution = session.user.role === "INSTITUTION_ADMIN";
-  const destination = homeFor(session.user.role);
-  const label = institution
-    ? "Dashboard"
-    : session.user.role === "AUTHORIZED_VERIFIER"
-      ? "Access"
-      : "Dashboard";
-  const links = [
+  const role = session.user.role;
+  const institution = role === "INSTITUTION_ADMIN";
+  const officer = role === "AICTE_OFFICER";
+  const verifier = role === "AUTHORIZED_VERIFIER";
+  const destination = homeFor(role);
+  const label = verifier ? "Verify credential" : "Dashboard";
+  const verifyLinks = [
     {
-      href: destination,
-      label,
-      icon: institution ? ("grid" as const) : ("building" as const),
+      href: "/verify",
+      label: "Verify credential",
+      icon: "flag" as const,
     },
-    ...(institution
-      ? [
-          {
-            href: "/institution/upload",
-            label: "Upload candidate",
-            icon: "upload" as const,
-          },
-        ]
-      : []),
-    ...(!institution && session.user.role !== "AUTHORIZED_VERIFIER"
-      ? [
-          {
-            href: "/aicte/institutions",
-            label: "Institutions",
-            icon: "building" as const,
-          },
-        ]
-      : []),
-    ...(institution || session.user.role === "AICTE_OFFICER"
-      ? [
-          {
-            href: "/submissions",
-            label: "Submissions",
-            icon: "history" as const,
-          },
-        ]
-      : []),
-    ...(institution || session.user.role === "AICTE_OFFICER"
-      ? [
-          {
-            href: "/cases",
-            label: "Cases",
-            icon: "flag" as const,
-          },
-        ]
-      : []),
+    {
+      href: "/verify/log",
+      label: "Verification log",
+      icon: "history" as const,
+    },
   ];
+  const links = verifier
+    ? verifyLinks
+    : [
+        {
+          href: destination,
+          label,
+          icon: institution ? ("grid" as const) : ("building" as const),
+        },
+        ...(institution
+          ? [
+              {
+                href: "/institution/upload",
+                label: "Upload candidate",
+                icon: "upload" as const,
+              },
+            ]
+          : [
+              {
+                href: "/aicte/institutions",
+                label: "Institutions",
+                icon: "building" as const,
+              },
+            ]),
+        ...(!institution && !verifier
+          ? [
+              {
+                href: "/analytics",
+                label: "Analytics",
+                icon: "grid" as const,
+              },
+            ]
+          : []),
+        {
+          href: "/reports",
+          label: "Reports",
+          icon: "history" as const,
+        },
+        ...(officer
+          ? [
+              {
+                href: "/audit",
+                label: "Audit explorer",
+                icon: "history" as const,
+              },
+            ]
+          : []),
+        ...(institution || officer
+          ? [
+              {
+                href: "/submissions",
+                label: "Submissions",
+                icon: "history" as const,
+              },
+              {
+                href: "/records",
+                label: "Student registry",
+                icon: "grid" as const,
+              },
+              {
+                href: "/credentials",
+                label: "Credentials",
+                icon: "flag" as const,
+              },
+            ]
+          : []),
+        ...(officer
+          ? [
+              {
+                href: "/verification",
+                label: "APAAR verification",
+                icon: "building" as const,
+              },
+              ...verifyLinks,
+            ]
+          : []),
+        ...(institution || officer
+          ? [
+              {
+                href: "/cases",
+                label: "Cases",
+                icon: "flag" as const,
+              },
+              {
+                href: "/notifications",
+                label: "Notifications",
+                icon: "bell" as const,
+              },
+            ]
+          : []),
+      ];
   const currentLabel =
     links.find((link) => link.href === pathname)?.label ?? label;
 
@@ -152,14 +211,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               <strong>{currentLabel}</strong>
             </span>
           </div>
-          <div className="account-label">
-            <span className="account-dot" aria-hidden="true">
-              {institution ? "IN" : "AI"}
-            </span>
-            <span>
-              {roleNames[session.user.role]}
-              <small>Direct local access</small>
-            </span>
+          <div className="topbar-actions">
+            <NotificationBell />
+            <div className="account-label">
+              <span className="account-dot" aria-hidden="true">
+                {institution ? "IN" : "AI"}
+              </span>
+              <span>
+                {roleNames[session.user.role]}
+                <small>Direct local access</small>
+              </span>
+            </div>
           </div>
         </header>
         <DataNotice />

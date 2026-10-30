@@ -29,6 +29,7 @@ type SessionContext = {
   download: (
     path: string,
     signal?: AbortSignal,
+    format?: { accept: string; fallbackName: string },
   ) => Promise<{ blob: Blob; filename: string }>;
 };
 const Context = createContext<SessionContext | null>(null);
@@ -43,7 +44,7 @@ export function homeFor(role: Role): string {
   return role === "INSTITUTION_ADMIN"
     ? "/institution"
     : role === "AUTHORIZED_VERIFIER"
-      ? "/access-denied"
+      ? "/verify"
       : "/aicte";
 }
 
@@ -213,7 +214,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const download = useCallback(
-    async (path: string, signal?: AbortSignal) => {
+    async (
+      path: string,
+      signal?: AbortSignal,
+      format?: { accept: string; fallbackName: string },
+    ) => {
       const activeToken = token.current;
       const attempt = generation.current;
       if (!activeToken) throw new ApiError(401, "NOT_AUTHENTICATED");
@@ -227,7 +232,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signal?.addEventListener("abort", abort, { once: true });
       requests.current.add(controller);
       try {
-        const result = await apiDownload(path, activeToken, controller.signal);
+        const result = await apiDownload(
+          path,
+          activeToken,
+          controller.signal,
+          format?.accept,
+          format?.fallbackName,
+        );
         if (attempt !== generation.current)
           throw new DOMException("Session ended", "AbortError");
         return result;

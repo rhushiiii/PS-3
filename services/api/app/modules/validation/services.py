@@ -7,12 +7,13 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import get_snapshot_session
-from app.core.http import APIError
+from app.core.http import APIError, not_found
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
 from app.modules.institutions.models import IntakeRule, Programme
@@ -64,8 +65,25 @@ def selected_run(
         ).limit(1)
     )
     if run is None and run_id is not None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return run
+
+
+def selected_runs_bulk(session: Session, batch_ids: list[UUID]) -> dict[UUID, UUID]:
+    """Latest completed run id per batch (the bulk form of `selected_run`)."""
+    return {
+        batch_id: run_id
+        for batch_id, run_id in session.execute(
+            select(ValidationRun.batch_id, ValidationRun.id)
+            .where(ValidationRun.batch_id.in_(batch_ids))
+            .order_by(
+                ValidationRun.batch_id,
+                ValidationRun.completed_at.desc(),
+                ValidationRun.id.desc(),
+            )
+            .ext(distinct_on(ValidationRun.batch_id))
+        )
+    }
 
 
 def require_run(

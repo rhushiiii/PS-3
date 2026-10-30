@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Literal, get_args
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -18,42 +19,53 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-CASE_STATUSES = (
+# Single source of truth: schemas import these literals; CHECK constraints derive
+# from them so the database, API and services cannot drift apart.
+CaseStatus = Literal[
     "OPEN",
-    "AWAITING_CORRECTION",
+    "ASSIGNED",
     "UNDER_REVIEW",
+    "AWAITING_CORRECTION",
+    "RESPONSE_SUBMITTED",
     "RESOLVED",
+    "REJECTED",
     "CLOSED",
-)
-CASE_CATEGORIES = (
-    "POTENTIAL_DUPLICATE",
-    "APAAR_MISMATCH",
-    "INTAKE_DISCREPANCY",
-    "OTHER",
-)
-CASE_EVENT_ACTIONS = (
+]
+CaseCategory = Literal[
+    "POTENTIAL_DUPLICATE", "APAAR_MISMATCH", "INTAKE_DISCREPANCY", "OTHER"
+]
+CasePriority = Literal["LOW", "MEDIUM", "HIGH", "URGENT"]
+CaseSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+CaseEventAction = Literal[
     "OPENED",
     "COMMENT",
     "REQUEST_CORRECTION",
     "CORRECTION_RECEIVED",
     "ASSIGNED",
+    "START_REVIEW",
+    "RESPONSE_SUBMITTED",
+    "UPDATED",
     "RESOLVED",
+    "REJECTED",
     "CLOSED",
-)
+]
+CLOSED_STATUSES = ("RESOLVED", "REJECTED", "CLOSED")
+
+
+def one_of(column: str, literal: Any) -> str:
+    return f"{column} IN ({', '.join(repr(value) for value in get_args(literal))})"
 
 
 class ReviewCase(Base):
     __tablename__ = "review_cases"
     __table_args__ = (
+        CheckConstraint(one_of("status", CaseStatus), name="ck_case_status"),
+        CheckConstraint(one_of("category", CaseCategory), name="ck_case_category"),
+        CheckConstraint(one_of("priority", CasePriority), name="ck_case_priority"),
+        CheckConstraint(one_of("severity", CaseSeverity), name="ck_case_severity"),
         CheckConstraint(
-            "status IN ('OPEN', 'AWAITING_CORRECTION', 'UNDER_REVIEW', 'RESOLVED', "
-            "'CLOSED')",
-            name="ck_case_status",
-        ),
-        CheckConstraint(
-            "category IN ('POTENTIAL_DUPLICATE', 'APAAR_MISMATCH', "
-            "'INTAKE_DISCREPANCY', 'OTHER')",
-            name="ck_case_category",
+            "resolution_reason IS NULL OR char_length(resolution_reason) <= 2000",
+            name="ck_case_resolution_reason",
         ),
         Index("ix_case_institution_status", "institution_id", "status"),
     )
@@ -69,6 +81,10 @@ class ReviewCase(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    priority: Mapped[str] = mapped_column(String(16), server_default="MEDIUM")
+    severity: Mapped[str] = mapped_column(String(16), server_default="MEDIUM")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class CaseRecord(Base):
@@ -95,11 +111,7 @@ class CaseRecord(Base):
 class CaseEvent(Base):
     __tablename__ = "case_events"
     __table_args__ = (
-        CheckConstraint(
-            "action IN ('OPENED', 'COMMENT', 'REQUEST_CORRECTION', "
-            "'CORRECTION_RECEIVED', 'ASSIGNED', 'RESOLVED', 'CLOSED')",
-            name="ck_case_event_action",
-        ),
+        CheckConstraint(one_of("action", CaseEventAction), name="ck_case_event_action"),
         Index("ix_case_event_case_ordinal", "case_id", "ordinal"),
     )
 

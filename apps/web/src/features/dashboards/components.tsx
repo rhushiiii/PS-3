@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { humanize } from "@/lib/format";
 
 export type CountMap = Record<string, unknown>;
 
@@ -17,12 +18,7 @@ export function displayCount(value: unknown): string {
   return count === null ? "Unavailable" : count.toLocaleString();
 }
 
-export function prettyLabel(value: string): string {
-  return value
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/^./, (first) => first.toUpperCase());
-}
+export const prettyLabel = humanize;
 
 export function MetricCard({
   label,

@@ -45,12 +45,7 @@ export function useSubmissionContext(institutionId: string) {
   };
 }
 
-export function validAcademicYear(value: string): boolean {
-  return (
-    /^[0-9]{4}-[0-9]{2}$/.test(value) &&
-    Number(value.slice(-2)) === (Number(value.slice(0, 4)) + 1) % 100
-  );
-}
+export { validAcademicYear } from "@/lib/academic-year";
 
 export const snapshotLabels = {
   CANDIDATE: "Candidate",

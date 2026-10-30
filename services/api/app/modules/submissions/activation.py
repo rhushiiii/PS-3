@@ -12,7 +12,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
-from app.core.http import APIError
+from app.core.http import APIError, not_found
+from app.core.pagination import paginate_list
 from app.modules.audit.services import record_action
 from app.modules.auth.models import Role, User
 from app.modules.cases.services import record_correction_received
@@ -228,7 +229,7 @@ def scoped_review(
         )
     )
     if review is None:
-        raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        raise not_found()
     return review
 
 
@@ -268,7 +269,8 @@ def review_response(
     omitted_records = None
     pagination = None
     if omitted_ids is not None:
-        selected = omitted_ids[(page - 1) * page_size : page * page_size]
+        window = paginate_list(omitted_ids, page, page_size)
+        selected = window.data
         records = (
             {
                 str(row.id): row
@@ -291,7 +293,7 @@ def review_response(
             )
             for value in selected
         ]
-        pagination = {"page": page, "page_size": page_size, "total": len(omitted_ids)}
+        pagination = window.pagination.model_dump()
     return ReviewResponse(
         id=review.id,
         batch_id=batch.id,

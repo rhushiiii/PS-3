@@ -133,6 +133,8 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, int]:
     for alias, role in (
         ("demo_officer", Role.AICTE_OFFICER),
         ("demo_manager", Role.AICTE_MANAGER),
+        ("demo_officer_2", Role.AICTE_OFFICER),
+        ("demo_verifier", Role.AUTHORIZED_VERIFIER),
     ):
         created += ensure_fixture(
             session,
@@ -149,7 +151,7 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, int]:
             },
             None,
         )
-    return {"created": created, "expected_fixture_records": 44}
+    return {"created": created, "expected_fixture_records": 46}
 
 
 def main() -> int:

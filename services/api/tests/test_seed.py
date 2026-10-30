@@ -14,14 +14,14 @@ from app.seed import SeedConflict, main, seed_demo, seed_id
 def test_deterministic_seed_and_no_duplicate_audits(
     db_session: Session, demo_settings: Settings
 ) -> None:
-    assert seed_demo(db_session, demo_settings)["created"] == 44
+    assert seed_demo(db_session, demo_settings)["created"] == 46
     db_session.flush()
     first_ids = set(db_session.scalars(select(AuditEvent.id)))
-    assert len(first_ids) == 44
+    assert len(first_ids) == 46
     assert seed_demo(db_session, demo_settings)["created"] == 0
     db_session.flush()
     assert set(db_session.scalars(select(AuditEvent.id))) == first_ids
-    for model, count in ((Institution, 3), (Programme, 6), (IntakeRule, 30), (User, 5)):
+    for model, count in ((Institution, 3), (Programme, 6), (IntakeRule, 30), (User, 7)):
         assert db_session.scalar(select(func.count()).select_from(model)) == count
     assert all(
         user.email.endswith(".invalid") for user in db_session.scalars(select(User))

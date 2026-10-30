@@ -11,10 +11,16 @@ import {
 import { useSession } from "@/features/auth/session";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
-import { ApiError, isUUID } from "@/lib/api/client";
+import { ApiError, isUUID, wasReplayed } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated";
 import { useSubmissionContext, validAcademicYear } from "./data";
-import { templateCSV, uploadError } from "./upload-state";
+import {
+  acceptAttribute,
+  formatList,
+  newIdempotencyKey,
+  templateCSV,
+  uploadError,
+} from "./upload-state";
 
 type Policy = components["schemas"]["UploadPolicyResponse"];
 type UploadResult = components["schemas"]["UploadResponse"];
@@ -31,6 +37,9 @@ export function CandidateUpload() {
   const [synthetic, setSynthetic] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const attempting = useRef(false);
+  // One key per submission attempt: kept while the same attempt is pending or
+  // its outcome is unknown, cleared when a new upload is deliberately prepared.
+  const attemptKey = useRef<string | null>(null);
   const policy = useQuery({
     queryKey: [
       "private",
@@ -52,7 +61,7 @@ export function CandidateUpload() {
     retry: false,
     networkMode: "always", // Never queue an offline upload for automatic later execution.
     gcTime: 0,
-    mutationFn: async (): Promise<UploadResult> => {
+    mutationFn: async (): Promise<UploadResult & { replayed: boolean }> => {
       const selectedFile = file.current?.files?.[0];
       if (!selectedFile) throw new ApiError(422, "INVALID_REQUEST");
       const body = new FormData();
@@ -64,6 +73,9 @@ export function CandidateUpload() {
       const result = await request<UploadResult>("/submissions", {
         method: "POST",
         body,
+        headers: {
+          "Idempotency-Key": (attemptKey.current ??= newIdempotencyKey()),
+        },
       });
       if (
         !result ||
@@ -74,7 +86,7 @@ export function CandidateUpload() {
         !result.warnings.every((warning) => typeof warning === "string")
       )
         throw new ApiError(201, "INVALID_RESPONSE");
-      return result;
+      return { ...result, replayed: wasReplayed(result) };
     },
   });
   const pendingUploads = useIsMutating({
@@ -119,7 +131,7 @@ export function CandidateUpload() {
     else if (!validAcademicYear(year))
       issue = "Use consecutive academic years, for example 2026-27.";
     else if (!selectedFile || selectedFile.size === 0)
-      issue = "Choose a non-empty synthetic student CSV.";
+      issue = `Choose a non-empty synthetic student file (${formatList(policy.data.accepted_formats)}).`;
     else if (selectedFile.size > policy.data.max_file_bytes)
       issue =
         "The selected file exceeds the configured file-size limit. It has not been sent.";
@@ -130,6 +142,7 @@ export function CandidateUpload() {
     attempting.current = true;
     mutation.mutate(undefined, {
       onSuccess: () => {
+        attemptKey.current = null;
         if (file.current) file.current.value = "";
         void queryClient.invalidateQueries({
           queryKey: [
@@ -148,6 +161,7 @@ export function CandidateUpload() {
   }
 
   function prepareAnother() {
+    attemptKey.current = null;
     mutation.reset();
     setFormError("");
     setSynthetic(false);
@@ -178,7 +192,7 @@ export function CandidateUpload() {
       <div className="page-heading heading-actions">
         <div>
           <p className="eyebrow">INSTITUTION DECLARATIONS</p>
-          <h1>Upload candidate CSV</h1>
+          <h1>Upload candidate file</h1>
           <p>Store a complete synthetic snapshot, with history preserved.</p>
         </div>
         <Link className="button secondary" href="/submissions">
@@ -189,7 +203,7 @@ export function CandidateUpload() {
         <Icon name="upload" />
         <div>
           <h2 id="snapshot-intent">
-            One CSV. One complete candidate snapshot.
+            One file. One complete candidate snapshot.
           </h2>
           <p>
             Include every declared record across all admission categories for
@@ -286,21 +300,29 @@ export function CandidateUpload() {
                   </span>
                 </label>
                 <label className="file-field">
-                  Synthetic student CSV
+                  Synthetic student file
                   <input
                     ref={file}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept={
+                      policy.data
+                        ? acceptAttribute(policy.data.accepted_formats)
+                        : undefined
+                    }
                     aria-describedby="file-help"
                     onChange={() => {
                       setFormError("");
+                      attemptKey.current = null;
                       if (mutation.isError && !outcome?.uncertain)
                         mutation.reset();
                     }}
                   />
                   <span id="file-help" className="form-help">
-                    CSV only. Contents are checked by the server; no student
-                    preview is displayed here.
+                    {policy.data
+                      ? `${formatList(policy.data.accepted_formats)} only. `
+                      : ""}
+                    Contents are checked by the server; no student preview is
+                    displayed here.
                   </span>
                 </label>
                 <label className="confirmation">
@@ -353,8 +375,9 @@ export function CandidateUpload() {
               </button>
             )}
             <p className="form-help">
-              No automatic retries. Each accepted upload creates a separate
-              version, including repeated files.
+              No automatic retries. Each deliberate upload creates a separate
+              version, including repeated files; re-sending the same pending
+              attempt is recognised and not duplicated.
             </p>
           </form>
           {mutation.isPending && (
@@ -365,12 +388,19 @@ export function CandidateUpload() {
           )}
           {mutation.isSuccess && (
             <section className="upload-outcome success-state" role="status">
-              <h3>Candidate stored</h3>
+              <h3>
+                {mutation.data.replayed
+                  ? "Upload already received"
+                  : "Candidate stored"}
+              </h3>
               <p>
-                Submission{" "}
-                <span className="code-label">{mutation.data.id}</span> was
-                parsed and stored. It is unvalidated and has not been activated.
-                Current enrolment totals are unchanged.
+                {mutation.data.replayed
+                  ? "This file was already received; showing the original candidate. No new candidate was created. Submission "
+                  : "Submission "}
+                <span className="code-label">{mutation.data.id}</span>
+                {mutation.data.replayed ? " " : " was parsed and stored. "}
+                is unvalidated and has not been activated. Current enrolment
+                totals are unchanged.
               </p>
               {mutation.data.warnings?.includes("DUPLICATE_UPLOAD") && (
                 <p className="warning-text">
@@ -429,7 +459,7 @@ export function CandidateUpload() {
           <header className="panel-heading">
             <div>
               <p className="eyebrow">STRICT V1</p>
-              <h2 id="policy-title">CSV requirements</h2>
+              <h2 id="policy-title">Upload requirements</h2>
             </div>
           </header>
           {policy.isPending ? (
@@ -461,8 +491,13 @@ export function CandidateUpload() {
                 </dd>
               </dl>
               <button className="button secondary" onClick={downloadTemplate}>
-                Download strict-v1 template
+                Download strict-v1 template (CSV)
               </button>
+              <p className="form-help">
+                Accepted formats: {formatList(policy.data.accepted_formats)}.
+                For Excel, the first worksheet is read with the same headers,
+                values only; macros are not supported.
+              </p>
               <h3>Required headers, in order</h3>
               <ol className="csv-headers">
                 {policy.data.required_headers.map((header) => (

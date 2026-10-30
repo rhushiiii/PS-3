@@ -14,7 +14,15 @@ from app.modules.audit.services import record_action
 from app.modules.auth.models import User
 
 DEMO_ALIASES = frozenset(
-    {"cedar_admin", "maple_admin", "willow_admin", "demo_officer", "demo_manager"}
+    {
+        "cedar_admin",
+        "maple_admin",
+        "willow_admin",
+        "demo_officer",
+        "demo_manager",
+        "demo_officer_2",
+        "demo_verifier",
+    }
 )
 ISSUER = "sih26263-local-demo"
 AUDIENCE = "sih26263-api"

@@ -36,4 +36,16 @@ export const demoAccounts: DemoAccount[] = [
     role: "Institution metadata access",
     monogram: "MG",
   },
+  {
+    alias: "demo_officer_2",
+    label: "Admissions Officer 2",
+    role: "Institution review access",
+    monogram: "O2",
+  },
+  {
+    alias: "demo_verifier",
+    label: "Credential Verifier",
+    role: "Credential verification access",
+    monogram: "VF",
+  },
 ];

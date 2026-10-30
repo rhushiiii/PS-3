@@ -7,10 +7,11 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+from conftest import counts, truncate_all
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from psycopg import OperationalError as DriverOperationalError
-from sqlalchemy import Engine, delete, event, func, select, text, update
+from sqlalchemy import Engine, delete, event, func, select, update
 from sqlalchemy.exc import (
     DBAPIError,
     OperationalError,
@@ -60,6 +61,7 @@ def test_upload_policy_uses_parser_headers_and_configured_limits(
         "required_headers": list(HEADERS),
         "encoding": "UTF-8",
         "accepts_utf8_bom": True,
+        "accepted_formats": ["csv", "xlsx"],
         "max_file_bytes": 2048,
         "max_rows": 2,
         "receive_timeout_seconds": 7.5,
@@ -117,14 +119,6 @@ def post_csv(
     assert response.status_code == 201, response.text
     assert response.json()["validation_performed"] is False
     return str(response.json()["id"])
-
-
-def counts(session: Session) -> tuple[int, int, int]:
-    values = tuple(
-        session.scalar(select(func.count()).select_from(model)) or 0
-        for model in (SubmissionScope, SubmissionBatch, StudentRecordVersion)
-    )
-    return values[0], values[1], values[2]
 
 
 def test_upload_persistence_provenance_and_masked_read(
@@ -652,15 +646,4 @@ def test_concurrent_uploads_share_scope_without_overwriting(
                 and scope.revision == 0
             )
     finally:
-        with db_engine.begin() as connection:
-            connection.execute(
-                text(
-                    "TRUNCATE submission_reviews, apaar_verifications, "
-                    "case_events, case_records, review_cases, "
-                    "validation_findings, "
-                    "validation_runs, "
-                    "student_record_versions, submission_batches, "
-                    "submission_scopes, "
-                    "audit_events, users, intake_rules, programmes, institutions"
-                )
-            )
+        truncate_all(db_engine)

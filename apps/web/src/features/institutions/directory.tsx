@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/session";
-import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { QueryBoundary } from "@/components/ui/feedback";
 import { Icon } from "@/components/ui/icon";
-import { Pagination } from "@/components/ui/pagination";
+import { QueryPagination } from "@/components/ui/pagination";
 import type { paths } from "@/lib/api/generated";
 
 type Institutions =
@@ -74,57 +74,52 @@ export function InstitutionDirectory() {
             </button>
           </div>
         </form>
-        {institutions.isPending ? (
-          <Loading label="Loading institutions…" />
-        ) : institutions.isError ? (
-          <ErrorPanel
-            error={institutions.error}
-            retry={() => void institutions.refetch()}
-          />
-        ) : institutions.data.data.length === 0 ? (
-          <div className="empty-state">
-            <h3>No matching institutions</h3>
-            <p>Try a different institution name.</p>
-          </div>
-        ) : (
-          <div className="institution-list">
-            {institutions.data.data.map((institution) => (
-              <article key={institution.id} className="directory-item">
-                <span className="directory-icon" aria-hidden="true">
-                  <Icon name="building" />
-                </span>
-                <div>
-                  <h3>
-                    <Link href={`/aicte/institutions/${institution.id}`}>
-                      {institution.name}
+        <QueryBoundary query={institutions} loading="Loading institutions…">
+          {(data) =>
+            data.data.length === 0 ? (
+              <div className="empty-state">
+                <h3>No matching institutions</h3>
+                <p>Try a different institution name.</p>
+              </div>
+            ) : (
+              <div className="institution-list">
+                {data.data.map((institution) => (
+                  <article key={institution.id} className="directory-item">
+                    <span className="directory-icon" aria-hidden="true">
+                      <Icon name="building" />
+                    </span>
+                    <div>
+                      <h3>
+                        <Link href={`/aicte/institutions/${institution.id}`}>
+                          {institution.name}
+                        </Link>
+                      </h3>
+                      <p>
+                        {institution.permanent_id}{" "}
+                        <span aria-hidden="true">·</span>{" "}
+                        {institution.region.replaceAll("_", " ")}
+                      </p>
+                    </div>
+                    <Link
+                      className="view-link"
+                      href={`/aicte/institutions/${institution.id}`}
+                      aria-label={`View ${institution.name}`}
+                    >
+                      View institution
+                      <Icon name="arrow" />
                     </Link>
-                  </h3>
-                  <p>
-                    {institution.permanent_id} <span aria-hidden="true">·</span>{" "}
-                    {institution.region.replaceAll("_", " ")}
-                  </p>
-                </div>
-                <Link
-                  className="view-link"
-                  href={`/aicte/institutions/${institution.id}`}
-                  aria-label={`View ${institution.name}`}
-                >
-                  View institution
-                  <Icon name="arrow" />
-                </Link>
-              </article>
-            ))}
-          </div>
-        )}
-        {institutions.data && (
-          <Pagination
-            page={page}
-            pageSize={10}
-            total={institutions.data.pagination.total}
-            busy={institutions.isFetching}
-            change={setPage}
-          />
-        )}
+                  </article>
+                ))}
+              </div>
+            )
+          }
+        </QueryBoundary>
+        <QueryPagination
+          query={institutions}
+          page={page}
+          pageSize={10}
+          change={setPage}
+        />
       </section>
       <p className="data-note">
         Institution and programme metadata only. This view makes no claim of

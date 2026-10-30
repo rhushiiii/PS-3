@@ -1,9 +1,11 @@
 """One shared error envelope and request ID for the API."""
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Annotated, cast
 from uuid import uuid4
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from psycopg import OperationalError as DriverOperationalError
 from pydantic import BaseModel
@@ -11,6 +13,8 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
+
+from app.core.config import Settings
 
 
 class ErrorDetail(BaseModel):
@@ -33,6 +37,30 @@ class APIError(HTTPException):
     ) -> None:
         super().__init__(status_code, message, headers)
         self.code = code
+
+
+def not_found() -> APIError:
+    """The shared 404 for missing or out-of-scope resources."""
+    return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+
+
+def no_store(response: Response) -> None:
+    """Forbid caching of an authenticated response."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+def utc_now() -> datetime:
+    """Clock dependency; tests override it to pin time."""
+    return datetime.now(UTC)
+
+
+def settings_of(request: Request) -> Settings:
+    """Settings dependency read from application state."""
+    return cast(Settings, request.app.state.settings)
+
+
+Now = Annotated[datetime, Depends(utc_now)]
+AppSettings = Annotated[Settings, Depends(settings_of)]
 
 
 def database_unavailable(exc: SQLAlchemyError) -> bool:

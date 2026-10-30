@@ -3,10 +3,18 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     public readonly requestId?: string,
+    public readonly retryAfter?: number,
   ) {
     super(code);
     this.name = "ApiError";
   }
+}
+
+const replayed = new WeakSet<object>();
+
+/** True when the API answered an idempotent replay (Idempotent-Replayed: true). */
+export function wasReplayed(body: unknown): boolean {
+  return isObject(body) && replayed.has(body);
 }
 
 export function isUUID(value: unknown): value is string {
@@ -34,7 +42,15 @@ export function errorMessage(error: unknown): string {
       return "This account is unavailable. Check that the local synthetic accounts have been seeded.";
     case "INVALID_RESPONSE":
       return "The API returned an unexpected response. Please check the local setup.";
+    case "RATE_LIMITED":
+      return error.retryAfter
+        ? `Too many requests. Please wait ${error.retryAfter} seconds and try again.`
+        : "Too many requests. Please wait a moment and try again.";
+    case "REPORT_TOO_LARGE":
+      return "This report is too large to export. Narrow the filters (for example a single academic year or institution) and try again.";
     default:
+      if (error.status === 429)
+        return "Too many requests. Please wait a moment and try again.";
       if (error.status === 404)
         return "This resource is unavailable or you do not have access to it.";
       if (error.status === 403)
@@ -101,15 +117,26 @@ export async function apiFetch<T>(
       typeof detail.request_id === "string" ? detail.request_id : undefined,
     );
   }
+  if (isObject(body) && response.headers.get("Idempotent-Replayed") === "true")
+    replayed.add(body);
   // Stable structures come from generated contracts; security-critical login
   // responses also receive runtime checks before establishing a session.
   return body as T;
+}
+
+function retryAfterSeconds(value: string | null): number | undefined {
+  const seconds = Number(value);
+  return value && Number.isInteger(seconds) && seconds > 0 && seconds < 86400
+    ? seconds
+    : undefined;
 }
 
 export async function apiDownload(
   path: string,
   token: string,
   signal?: AbortSignal,
+  accept = "text/csv",
+  fallbackName = "validation-feedback.csv",
 ): Promise<{ blob: Blob; filename: string }> {
   if (!path.startsWith("/") || path.startsWith("//"))
     throw new ApiError(0, "INVALID_RESPONSE");
@@ -117,7 +144,7 @@ export async function apiDownload(
   try {
     response = await fetch(apiBase() + path, {
       headers: {
-        Accept: "text/csv",
+        Accept: accept,
         Authorization: `Bearer ${token}`,
       },
       credentials: "omit",
@@ -141,10 +168,13 @@ export async function apiDownload(
       response.status,
       typeof detail.code === "string" ? detail.code : "REQUEST_FAILED",
       typeof detail.request_id === "string" ? detail.request_id : undefined,
+      retryAfterSeconds(response.headers.get("Retry-After")),
     );
   }
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const match = /filename="([a-zA-Z0-9._-]+\.csv)"/i.exec(disposition);
-  return { blob, filename: match?.[1] ?? "validation-feedback.csv" };
+  const match = /filename="([a-zA-Z0-9._-]+\.(?:csv|xlsx|pdf))"/i.exec(
+    disposition,
+  );
+  return { blob, filename: match?.[1] ?? fallbackName };
 }
