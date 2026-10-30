@@ -1,0 +1,4 @@
+college_student_id,student_name,apaar_id,academic_year,programme_code,admission_category,enrollment_status,enrollment_date
+MAP-001,Demo Learner Maple 001,900000200001,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+MAP-002,Demo Learner Maple 002,900000200002,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+MAP-003,Demo Learner Maple 003,900000200003,2026-27,DEMO-COMP,NRI,ACTIVE,2026-08-02

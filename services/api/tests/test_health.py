@@ -87,3 +87,28 @@ def test_cors_rejects_unconfigured_origin(settings: Settings) -> None:
             "/api/v1/health", headers={"Origin": "https://example.com"}
         )
         assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_allows_idempotency_key_and_exposes_replay_header(
+    settings: Settings,
+) -> None:
+    origin = settings.cors_origins[0]
+    with patch("app.main.build_engine", return_value=MagicMock(spec=Engine)):
+        with TestClient(create_app(settings)) as client:
+            preflight = client.options(
+                "/api/v1/submissions",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "idempotency-key",
+                },
+            )
+            assert preflight.status_code == 200
+            assert (
+                "idempotency-key"
+                in preflight.headers["access-control-allow-headers"].lower()
+            )
+            simple = client.get("/api/v1/health", headers={"Origin": origin})
+            assert (
+                "Idempotent-Replayed" in simple.headers["access-control-expose-headers"]
+            )

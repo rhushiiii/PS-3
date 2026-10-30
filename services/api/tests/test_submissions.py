@@ -60,6 +60,7 @@ def test_upload_policy_uses_parser_headers_and_configured_limits(
         "required_headers": list(HEADERS),
         "encoding": "UTF-8",
         "accepts_utf8_bom": True,
+        "accepted_formats": ["csv", "xlsx"],
         "max_file_bytes": 2048,
         "max_rows": 2,
         "receive_timeout_seconds": 7.5,
@@ -655,8 +656,13 @@ def test_concurrent_uploads_share_scope_without_overwriting(
         with db_engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE submission_reviews, apaar_verifications, "
-                    "case_events, case_records, review_cases, "
+                    "TRUNCATE credential_verifications, credential_revocations, "
+                    "admission_credentials, integrity_decisions, "
+                    "intake_assessments, "
+                    "intake_declarations, "
+                    "intake_rule_changes, "
+                    "submission_reviews, apaar_verifications, "
+                    "notifications, case_events, case_records, review_cases, "
                     "validation_findings, "
                     "validation_runs, "
                     "student_record_versions, submission_batches, "

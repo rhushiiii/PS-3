@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -107,6 +108,13 @@ class SubmissionBatch(Base):
             "(activated_at IS NULL) = (activation_review_id IS NULL)",
             name="ck_batch_activation_pair",
         ),
+        Index(
+            "uq_batch_idempotency",
+            "institution_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -138,6 +146,8 @@ class SubmissionBatch(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activation_review_id: Mapped[UUID | None]
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    idempotency_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class SubmissionReview(Base):

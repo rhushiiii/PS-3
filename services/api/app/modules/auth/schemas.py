@@ -9,7 +9,7 @@ from app.modules.auth.models import Role
 class DemoLogin(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    demo_alias: str = Field(min_length=1, max_length=64, pattern=r"^[a-z_]+$")
+    demo_alias: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")
 
 
 class TokenResponse(BaseModel):

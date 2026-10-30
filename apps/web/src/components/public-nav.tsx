@@ -24,7 +24,15 @@ const groups = [
   {
     heading: "AICTE review access",
     accounts: demoAccounts.filter(
-      (account) => account.role !== "Institution administrator",
+      (account) =>
+        account.role !== "Institution administrator" &&
+        account.role !== "Credential verification access",
+    ),
+  },
+  {
+    heading: "Credential verification",
+    accounts: demoAccounts.filter(
+      (account) => account.role === "Credential verification access",
     ),
   },
 ];
@@ -37,8 +45,7 @@ function SignInMenu({ onNavigate }: { onNavigate?: () => void }) {
   useEffect(() => {
     if (!open) return;
     function onClick(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node))
-        setOpen(false);
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);

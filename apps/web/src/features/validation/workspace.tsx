@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "@/features/auth/session";
+import { IntakeAssessmentPanel } from "@/features/intake/assessment-panel";
 import { useSubmissionContext } from "@/features/submissions/data";
 import { ReviewActivation } from "@/features/submissions/review-activation";
 import { ApiError, errorMessage, isUUID } from "@/lib/api/client";
@@ -534,6 +535,11 @@ export function ValidationWorkspace({
           </p>
         )}
       </section>
+
+      <IntakeAssessmentPanel
+        batchId={batchId}
+        processed={batch.status === "COMPLETED"}
+      />
 
       <section className="panel" aria-labelledby="runs-heading">
         <header className="panel-heading">

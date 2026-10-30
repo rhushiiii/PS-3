@@ -471,3 +471,35 @@ current validation-run details; request fan-out will increase with institution
 count. Dashboard data is synthetic and API-backed. No official identity verification,
 regulatory compliance determination, case workflow, marketing page or provider
 integration is represented.
+
+## Master-plan additions (Phases 1–10)
+
+Beyond Milestone 5, the repository now includes (all synthetic data, local demo auth only):
+Excel (.xlsx) upload and optional upload idempotency keys; a full case workflow (priority,
+severity, due date, overdue/escalation, assignment, response, resolution reason) with
+in-app notifications; a student registry with record provenance and history; intake
+governance (rule changes with audit, declared totals, immutable assessments, what-if
+simulator); a rule-based integrity engine with score components and officer decisions;
+hardened simulated APAAR verification and signed admission credentials with an authorized
+verifier workspace; manager analytics, an officer audit explorer, and CSV/XLSX/PDF
+reports; rate limits, security headers and log redaction.
+
+Applied migrations are now through `0012_verification_credentials` (0007 upload
+idempotency, 0008 case workflow, 0009 notifications, 0010 intake governance, 0011
+integrity decisions, 0012 verification and credentials). New settings are listed in
+`.env.example`; to use credentials set `CREDENTIAL_SIGNING_KEY` (base64 of 32 random
+bytes). Extra demo accounts: `demo_officer_2` and `demo_verifier`.
+
+Reproducible end-to-end demonstration (local DEMO_AUTH mode only; refuses otherwise),
+from `services/api` after `alembic upgrade head` and `python -m app.seed`:
+
+```bash
+python -m app.demo_scenario          # in-process, ephemeral credential key
+python -m app.demo_scenario --json   # machine-readable result
+```
+
+It uploads the files in `samples/demo/`, drives the 12-step sequence through the public
+API and checks results against `samples/demo/expected.json`. Simulated verification is
+never official verification, integrity signals are review prompts and not fraud
+determinations, and no real APAAR/ABC/government access is claimed. The frontend has no
+automated UI suite; verify it manually (lint, typecheck, build, browser).

@@ -89,6 +89,52 @@ def upload_scope(session: Session, user: User, context: UploadContext) -> None:
         raise APIError(422, "INVALID_REQUEST", "Upload scope is inactive")
 
 
+def upload_fingerprint(data: bytes, context: UploadContext) -> str:
+    """Binds an idempotency key to the exact file and scope it first carried."""
+    parts = (
+        sha256(data).hexdigest(),
+        str(context.institution_id),
+        str(context.programme_id),
+        context.academic_year,
+        context.schema_version,
+    )
+    return sha256("|".join(parts).encode()).hexdigest()
+
+
+def idempotent_replay(
+    session: Session, institution_id: UUID, key: str, fingerprint: str
+) -> UploadResponse | None:
+    """Original response for a repeated key; 409 if the key carried other input."""
+    batch = session.scalar(
+        select(SubmissionBatch).where(
+            SubmissionBatch.institution_id == institution_id,
+            SubmissionBatch.idempotency_key == key,
+        )
+    )
+    if batch is None:
+        return None
+    if batch.idempotency_fingerprint != fingerprint:
+        raise APIError(
+            409,
+            "IDEMPOTENCY_KEY_REUSED",
+            "Idempotency key used with a different upload",
+        )
+    # Only batches received no later than the original count, so the body is stable.
+    earlier = session.scalar(
+        select(SubmissionBatch.id)
+        .where(
+            SubmissionBatch.scope_id == batch.scope_id,
+            SubmissionBatch.file_sha256 == batch.file_sha256,
+            SubmissionBatch.id != batch.id,
+            SubmissionBatch.received_at <= batch.received_at,
+        )
+        .limit(1)
+    )
+    return UploadResponse(
+        id=batch.id, warnings=["DUPLICATE_UPLOAD"] if earlier is not None else []
+    )
+
+
 def persist_candidate(
     session: Session,
     user: User,
@@ -97,7 +143,10 @@ def persist_candidate(
     filename: str,
     rows: list[ParsedRow],
     deadline: float,
+    source: str = "CSV_UPLOAD",
+    idempotency: tuple[str, str] | None = None,
 ) -> UploadResponse:
+    """`idempotency` is an optional (key, fingerprint) pair."""
     try:
         upload_scope(session, user, context)
         check_budget(deadline)
@@ -129,7 +178,9 @@ def persist_candidate(
             file_sha256=sha256(data).hexdigest(),
             file_size_bytes=len(data),
             row_count=len(rows),
-            source="CSV_UPLOAD",
+            source=source,
+            idempotency_key=idempotency[0] if idempotency else None,
+            idempotency_fingerprint=idempotency[1] if idempotency else None,
             schema_version=context.schema_version,
             submission_mode="SNAPSHOT",
             status=ProcessingStatus.PROCESSING,

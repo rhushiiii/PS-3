@@ -5,6 +5,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { useSession } from "@/features/auth/session";
+import { DeclaredTotalsPanel } from "@/features/intake/declarations-panel";
+import { IntegritySignalsPanel } from "@/features/integrity/panel";
+import { SimulatorPanel } from "@/features/intake/simulator-panel";
 import { validAcademicYear } from "@/features/submissions/data";
 import { isUUID } from "@/lib/api/client";
 import type { components, paths } from "@/lib/api/generated";
@@ -30,7 +33,68 @@ type Intake =
 type History =
   paths["/api/v1/submissions"]["get"]["responses"][200]["content"]["application/json"];
 
+type CasePage =
+  paths["/api/v1/cases"]["get"]["responses"][200]["content"]["application/json"];
+
 const dashboardYear = "2026-27";
+
+function CorrectionRequestsCard() {
+  const { session, request } = useSession();
+  const key = [
+    "private",
+    session?.generation,
+    session?.user.id,
+    "correction-requests",
+  ];
+  const count = (overdue: boolean) =>
+    request<CasePage>(
+      `/cases?status=AWAITING_CORRECTION&page=1&page_size=1${overdue ? "&overdue=true" : ""}`,
+    );
+  const open = useQuery({
+    queryKey: [...key, "open"],
+    enabled: !!session,
+    queryFn: () => count(false),
+  });
+  const overdue = useQuery({
+    queryKey: [...key, "overdue"],
+    enabled: !!session,
+    queryFn: () => count(true),
+  });
+  return (
+    <section
+      className="panel dashboard-panel"
+      aria-labelledby="correction-requests-title"
+    >
+      <h2 id="correction-requests-title">Open correction requests</h2>
+      <div aria-live="polite">
+        {open.isPending ? (
+          <Loading label="Loading correction requests…" />
+        ) : open.isError ? (
+          <ErrorPanel error={open.error} retry={() => void open.refetch()} />
+        ) : (
+          <p>
+            <strong>{open.data.pagination.total.toLocaleString()}</strong> case
+            {open.data.pagination.total === 1 ? "" : "s"} awaiting your
+            correction
+            {overdue.data
+              ? ` · ${overdue.data.pagination.total.toLocaleString()} overdue`
+              : overdue.isError
+                ? " · overdue count unavailable"
+                : ""}
+            .
+          </p>
+        )}
+      </div>
+      <p>
+        <Link href="/cases?status=AWAITING_CORRECTION">
+          View correction requests
+        </Link>
+        {" · "}
+        <Link href="/records">Student registry</Link>
+      </p>
+    </section>
+  );
+}
 
 export function InstitutionDashboard({
   institutionId,
@@ -173,6 +237,7 @@ export function InstitutionDashboard({
           Upload another candidate
         </Link>
       </header>
+      <CorrectionRequestsCard />
       {institution.isError && (
         <ErrorPanel
           error={institution.error}
@@ -552,6 +617,16 @@ export function InstitutionDashboard({
               </DashboardTable>
             )}
           </section>
+        </>
+      )}
+      {valid && (
+        <>
+          <IntegritySignalsPanel
+            institutionId={institutionId}
+            canDecide={false}
+          />
+          <DeclaredTotalsPanel institutionId={institutionId} />
+          <SimulatorPanel institutionId={institutionId} />
         </>
       )}
       <p className="data-note">

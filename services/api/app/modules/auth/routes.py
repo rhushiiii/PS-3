@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, Response
 
 from app.core.config import Settings
 from app.core.http import ErrorResponse
+from app.core.rate_limit import rate_limit_by_ip
 from app.modules.auth.dependencies import CurrentUser, DatabaseSession
 from app.modules.auth.schemas import CurrentUserResponse, DemoLogin, TokenResponse
 from app.modules.auth.services import (
@@ -41,7 +42,11 @@ def me(user: CurrentUser, response: Response) -> CurrentUserResponse:
     return CurrentUserResponse.model_validate(user)
 
 
-@demo_router.post("/demo-login", response_model=TokenResponse)
+@demo_router.post(
+    "/demo-login",
+    response_model=TokenResponse,
+    dependencies=[rate_limit_by_ip("demo_login")],
+)
 def demo_login(
     body: DemoLogin, request: Request, response: Response, session: DatabaseSession
 ) -> TokenResponse:

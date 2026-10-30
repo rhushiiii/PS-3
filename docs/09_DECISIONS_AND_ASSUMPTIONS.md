@@ -148,3 +148,45 @@ counts grow.
 The execution scope and restricted authentication/seed policy are specified in
 docs/07_IMPLEMENTATION_PLAN.md. Milestone 1 is API-only. These decisions document
 planned behavior, not evidence that the features are implemented.
+
+## Master-plan execution decisions (30 October 2026)
+
+User-approved plan: Phases 1–10 of the PRAVYA master implementation plan. Decisions
+made while executing it:
+
+- **Dependencies added** (exact pins): `openpyxl` (Excel upload and XLSX reports),
+  `cryptography` (Ed25519 credential signatures), `fpdf2` (PDF reports), with their
+  transitive packages in `requirements.lock`, and `types-openpyxl` for strict mypy.
+- **Excel upload** reads the first worksheet of a plain `.xlsx`, values only
+  (`data_only`), never evaluates formulas, rejects macro/encrypted/corrupt packages and
+  expansion bombs, and shares downstream normalization with CSV.
+- **Upload idempotency**: optional `Idempotency-Key` header, scoped per institution.
+  Same key and same content returns the original candidate (HTTP 200 with
+  `Idempotent-Replayed: true`); different content is 409. Uploads without the header
+  still create a distinct candidate each time, as before. APAAR verification has the
+  same header with the same semantics.
+- **Case workflow**: statuses `OPEN`, `ASSIGNED`, `UNDER_REVIEW`, `AWAITING_CORRECTION`,
+  `RESPONSE_SUBMITTED`, `RESOLVED`, `REJECTED`, `CLOSED`. Activating a corrected batch now
+  moves an `AWAITING_CORRECTION` case to `RESPONSE_SUBMITTED` (previously
+  `UNDER_REVIEW`); an officer then starts review. Overdue and escalation are computed at
+  read time; there is no background worker. Due-date defaults come from settings.
+- **Notifications** are in-app only; an email adapter would plug into the notification
+  creation service and is not implemented. Overdue notices are generated lazily and
+  idempotently when a recipient lists notifications.
+- **Intake rule edits update the rule in place** (history in `intake_rule_changes`)
+  because validation selects a fixed configured rule version. Edits do not retroactively
+  change earlier validation runs; revalidate to apply a new cap. Declared reference
+  totals are DEMO data; with no declaration the system reports `NO_REFERENCE` and draws
+  no missing-population conclusion.
+- **Integrity signals are rule-based review prompts**, not fraud or compliance
+  determinations; no machine learning is used. Severity per signal and the weights/bands
+  are configurable assumptions, not official values.
+- **Credentials**: Ed25519 compact-JWS tokens, one trusted key id at a time (no rotation).
+  They carry only institution, programme, academic year, category and status. A QR code
+  is only a carrier; authenticity comes from the signature check. Verification requires
+  purpose and consent reference and is logged. No government integration is claimed.
+- **Rate limiting** is in-process and per worker; a shared store is required for
+  multi-worker deployments. Request-size cap and security headers are global middleware.
+- **Not done / deferred**: browser (Playwright) tests remain removed by user direction;
+  email delivery; QR image rendering; credential key rotation; production
+  authentication; real-data security design (retention, encryption, consent).

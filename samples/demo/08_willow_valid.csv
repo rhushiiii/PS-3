@@ -1,0 +1,4 @@
+college_student_id,student_name,apaar_id,academic_year,programme_code,admission_category,enrollment_status,enrollment_date
+WIL-001,Demo Learner Willow 001,900000300001,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+WIL-002,Demo Learner Willow 002,900000300002,2026-27,DEMO-COMP,REGULAR,ACTIVE,2026-08-01
+WIL-003,Demo Learner Willow 003,900000300003,2026-27,DEMO-COMP,NRI,ACTIVE,2026-08-02

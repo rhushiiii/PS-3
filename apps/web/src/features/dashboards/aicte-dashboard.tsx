@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { ErrorPanel, Loading } from "@/components/ui/feedback";
+import { InstitutionsRequiringReview } from "@/features/integrity/overview-table";
 import { useSession } from "@/features/auth/session";
 import { isUUID } from "@/lib/api/client";
 import type { components, paths } from "@/lib/api/generated";
@@ -673,6 +674,10 @@ export function AicteDashboard() {
               )}
             </section>
           </div>
+          <InstitutionsRequiringReview
+            canOpenInstitution={!!isOfficer}
+            initialYear={dashboardYear}
+          />
           <section className="panel dashboard-note-panel">
             <h2>
               {isManager

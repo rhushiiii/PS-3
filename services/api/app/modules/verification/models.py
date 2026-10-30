@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     String,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -27,10 +28,17 @@ class ApaarVerification(Base):
         ),
         CheckConstraint(
             "status IN ('SIMULATED_MATCH', 'SIMULATED_MISMATCH', 'PENDING', "
-            "'SOURCE_UNAVAILABLE')",
+            "'SOURCE_UNAVAILABLE', 'SOURCE_TIMEOUT')",
             name="ck_verification_status",
         ),
         Index("ix_verification_record_time", "record_version_id", "requested_at", "id"),
+        Index(
+            "uq_verification_idempotency",
+            "record_version_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -49,3 +57,10 @@ class ApaarVerification(Base):
     completed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Opaque per-attempt id, null only for rows created before migration 0012.
+    provider_request_id: Mapped[str | None] = mapped_column(String(64))
+    retry_of_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("apaar_verifications.id")
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64))

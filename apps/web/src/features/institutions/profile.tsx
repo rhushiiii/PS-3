@@ -8,6 +8,10 @@ import { ErrorPanel, Loading } from "@/components/ui/feedback";
 import { Pagination } from "@/components/ui/pagination";
 import type { components, paths } from "@/lib/api/generated";
 import { isUUID } from "@/lib/api/client";
+import { DeclaredTotalsPanel } from "@/features/intake/declarations-panel";
+import { IntegritySignalsPanel } from "@/features/integrity/panel";
+import { IntakeRulesPanel } from "@/features/intake/rules-panel";
+import { SimulatorPanel } from "@/features/intake/simulator-panel";
 
 type Institution = components["schemas"]["InstitutionResponse"];
 type Programmes =
@@ -193,6 +197,19 @@ export function InstitutionProfile({
               />
             )}
           </section>
+          {session?.user.role !== "AICTE_MANAGER" && (
+            <IntakeRulesPanel
+              institutionId={institutionId}
+              canEdit={session?.user.role === "AICTE_OFFICER"}
+            />
+          )}
+          {session?.user.role === "AICTE_OFFICER" && (
+            <>
+              <IntegritySignalsPanel institutionId={institutionId} canDecide />
+              <DeclaredTotalsPanel institutionId={institutionId} />
+              <SimulatorPanel institutionId={institutionId} />
+            </>
+          )}
           <p className="data-note">
             These are local synthetic institution records. They do not establish
             official approval, enrolment totals or government verification.

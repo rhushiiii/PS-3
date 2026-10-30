@@ -603,8 +603,13 @@ def cleanup(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE submission_reviews, apaar_verifications, "
-                "case_events, case_records, review_cases, "
+                "TRUNCATE credential_verifications, credential_revocations, "
+                "admission_credentials, integrity_decisions, "
+                "intake_assessments, "
+                "intake_declarations, "
+                "intake_rule_changes, "
+                "submission_reviews, apaar_verifications, "
+                "notifications, case_events, case_records, review_cases, "
                 "validation_findings, validation_runs, "
                 "student_record_versions, submission_batches, submission_scopes, "
                 "audit_events, users, "

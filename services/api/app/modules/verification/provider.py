@@ -10,6 +10,7 @@ class VerificationStatus(StrEnum):
     SIMULATED_MISMATCH = "SIMULATED_MISMATCH"
     PENDING = "PENDING"
     SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+    SOURCE_TIMEOUT = "SOURCE_TIMEOUT"
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class MockAPAARProvider:
         "900000000001": VerificationStatus.SIMULATED_MATCH,
         "900000000002": VerificationStatus.SIMULATED_MISMATCH,
         "900000000003": VerificationStatus.SOURCE_UNAVAILABLE,
+        "900000000004": VerificationStatus.SOURCE_TIMEOUT,
     }
 
     def __init__(self, key: bytes) -> None:
