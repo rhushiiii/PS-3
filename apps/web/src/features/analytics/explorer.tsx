@@ -203,7 +203,13 @@ export function AnalyticsExplorer() {
     queryKey: [...scope, tab, paths[tab]],
     enabled: !!session,
     queryFn: ({ signal }) => request<Common>(paths[tab], { signal }),
-    placeholderData: (previous) => previous,
+    // Each tab's response has a different shape (Trends/Completeness/
+    // Utilisation/CasePerf) cast via the shared `Common` type below, so a
+    // placeholder must only carry over within the same tab (smooth
+    // pagination/filter changes) — never across a tab switch, or the new
+    // tab's view renders the previous tab's data under its own shape.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[4] === tab ? previous : undefined,
   });
 
   function onTabKey(event: KeyboardEvent, index: number) {
