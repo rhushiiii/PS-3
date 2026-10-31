@@ -9,7 +9,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+CONFIG_PATH = Path(__file__).resolve()
+PROJECT_ROOT = next(
+    (
+        parent
+        for parent in CONFIG_PATH.parents
+        if (parent / "docs").is_dir() and (parent / "services").is_dir()
+    ),
+    CONFIG_PATH.parents[2],
+)
 
 
 class Settings(BaseSettings):
