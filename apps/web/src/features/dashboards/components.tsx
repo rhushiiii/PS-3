@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { humanize } from "@/lib/format";
 
 export type CountMap = Record<string, unknown>;
@@ -24,23 +24,40 @@ export function MetricCard({
   label,
   value,
   note,
+  tone = "neutral",
 }: {
   label: string;
   value: string | number;
   note: string;
+  tone?: "neutral" | "warning" | "critical" | "success";
 }) {
+  const reduce = useReducedMotion();
+  const toneClass =
+    tone === "critical"
+      ? "dashboard-metric-critical"
+      : tone === "warning"
+        ? "dashboard-metric-warning"
+        : tone === "success"
+          ? "dashboard-metric-success"
+          : "dashboard-metric-neutral";
+
   return (
     <motion.article
-      className="dashboard-metric"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
+      className={`dashboard-metric ${toneClass}`}
+      initial={reduce ? undefined : { opacity: 0, scale: 0.94, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      whileHover={reduce ? undefined : { y: -3, scale: 1.012 }}
+      transition={
+        reduce
+          ? { duration: 0.15 }
+          : { type: "spring", stiffness: 420, damping: 28 }
+      }
     >
-      <span>{label}</span>
-      <strong>
+      <span className="metric-label">{label}</span>
+      <strong className="metric-value">
         {typeof value === "number" ? value.toLocaleString() : value}
       </strong>
-      <small>{note}</small>
+      <small className="metric-note">{note}</small>
     </motion.article>
   );
 }
@@ -52,6 +69,7 @@ export function CategoryBars({
   categories: Array<{ label: string; value: number | null }>;
   emptyLabel?: string;
 }) {
+  const reduce = useReducedMotion();
   const max = Math.max(0, ...categories.map((item) => item.value ?? 0));
   if (!categories.some((item) => item.value !== null)) {
     return <p className="chart-empty">{emptyLabel}</p>;
@@ -64,21 +82,35 @@ export function CategoryBars({
       {categories.map((item) => {
         const value = item.value;
         const width = max > 0 && value !== null ? (value / max) * 100 : 0;
+        const isWinner = value !== null && value === max && max > 0;
         return (
-          <div className="category-bar-row" key={item.label}>
-            <span>{item.label}</span>
+          <div
+            className={`category-bar-row ${isWinner ? "category-bar-winner" : ""}`}
+            key={item.label}
+          >
+            <span className={isWinner ? "bar-label-winner" : undefined}>
+              {item.label}
+              {isWinner && <span className="winner-indicator" aria-hidden="true">★</span>}
+            </span>
             <div
-              className="category-bar-track"
+              className={`category-bar-track ${isWinner ? "track-winner" : ""}`}
               role="img"
-              aria-label={`${item.label}: ${value === null ? "no current declaration" : value.toLocaleString()}`}
+              aria-label={`${item.label}: ${value === null ? "no current declaration" : value.toLocaleString()}${isWinner ? " (highest)" : ""}`}
             >
               <motion.span
-                initial={{ width: 0 }}
+                className={isWinner ? "bar-span-winner" : undefined}
+                initial={reduce ? undefined : { width: 0 }}
                 animate={{ width: `${width}%` }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
+                transition={
+                  reduce
+                    ? { duration: 0.1 }
+                    : { duration: 0.65, ease: [0.16, 1, 0.3, 1] }
+                }
               />
             </div>
-            <strong>{value === null ? "—" : value.toLocaleString()}</strong>
+            <strong className={isWinner ? "bar-val-winner" : undefined}>
+              {value === null ? "—" : value.toLocaleString()}
+            </strong>
           </div>
         );
       })}
@@ -87,11 +119,11 @@ export function CategoryBars({
 }
 
 const statusTone: Record<string, string> = {
-  ACTIVE: "#536239",
-  INACTIVE: "#926c30",
-  UNSUPPORTED: "#9a978c",
+  ACTIVE: "#15803d",
+  INACTIVE: "#b45309",
+  UNSUPPORTED: "#6b7280",
 };
-const donutPalette = ["#536239", "#8d8c59", "#926c30", "#c17a3a", "#9a978c"];
+const donutPalette = ["#15803d", "#3b82f6", "#b45309", "#d97706", "#6b7280"];
 
 export function StatusDonut({
   statuses,
@@ -100,17 +132,20 @@ export function StatusDonut({
   statuses: Array<{ label: string; value: number }>;
   total: number;
 }) {
+  const reduce = useReducedMotion();
   const nonZero = statuses.filter((item) => item.value > 0);
   if (total <= 0 || nonZero.length === 0)
     return <p className="chart-empty">No current records to chart.</p>;
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
+  const maxVal = Math.max(0, ...nonZero.map((item) => item.value));
   const lengths = nonZero.map((item) => (item.value / total) * circumference);
   const offsets = lengths.map((_, index) =>
     lengths.slice(0, index).reduce((sum, value) => sum + value, 0),
   );
   const segments = nonZero.map((item, index) => ({
     ...item,
+    isWinner: item.value === maxVal && maxVal > 0,
     length: lengths[index],
     offset: offsets[index],
     color:
@@ -142,19 +177,27 @@ export function StatusDonut({
             r={radius}
             fill="none"
             stroke={segment.color}
-            strokeWidth="16"
+            strokeWidth={segment.isWinner ? "18" : "15"}
             strokeDasharray={`${segment.length} ${circumference - segment.length}`}
-            initial={{ strokeDashoffset: circumference, opacity: 0 }}
+            initial={
+              reduce
+                ? undefined
+                : { strokeDashoffset: circumference, opacity: 0 }
+            }
             animate={{
               strokeDashoffset: circumference - segment.offset,
               opacity: 1,
             }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
+            transition={
+              reduce
+                ? { duration: 0.1 }
+                : { duration: 0.7, ease: [0.16, 1, 0.3, 1] }
+            }
             transform="rotate(-90 70 70)"
             strokeLinecap="butt"
           />
         ))}
-        <text x="70" y="66" textAnchor="middle" className="status-donut-total">
+        <text x="70" y="65" textAnchor="middle" className="status-donut-total">
           {total.toLocaleString()}
         </text>
         <text x="70" y="82" textAnchor="middle" className="status-donut-label">
@@ -163,9 +206,19 @@ export function StatusDonut({
       </svg>
       <ul className="status-donut-legend">
         {segments.map((segment) => (
-          <li key={segment.label}>
-            <span style={{ background: segment.color }} aria-hidden="true" />
+          <li
+            key={segment.label}
+            className={segment.isWinner ? "status-legend-winner" : undefined}
+          >
+            <span
+              style={{ background: segment.color }}
+              aria-hidden="true"
+              className={segment.isWinner ? "legend-dot-winner" : undefined}
+            />
             {prettyLabel(segment.label)} · {segment.value.toLocaleString()}
+            {segment.isWinner && (
+              <span className="legend-winner-badge">Majority</span>
+            )}
           </li>
         ))}
       </ul>
@@ -238,5 +291,37 @@ export function DashboardTable({
     >
       <table>{children}</table>
     </div>
+  );
+}
+
+export function DashboardTableRow({
+  index = 0,
+  children,
+  className = "",
+  ...props
+}: {
+  index?: number;
+  children: React.ReactNode;
+  className?: string;
+} & React.HTMLAttributes<HTMLTableRowElement>) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.tr
+      className={`dashboard-table-row ${className}`}
+      initial={reduce ? undefined : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={
+        reduce
+          ? { duration: 0.05 }
+          : {
+              duration: 0.28,
+              delay: Math.min(index * 0.032, 0.35),
+              ease: "easeOut",
+            }
+      }
+      {...(props as any)}
+    >
+      {children}
+    </motion.tr>
   );
 }

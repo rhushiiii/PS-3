@@ -8,10 +8,12 @@ import { demoAccounts } from "@/features/auth/accounts";
 
 const sections = [
   { id: "overview", label: "Overview" },
+  { id: "solutions", label: "Solutions" },
+  { id: "simulator", label: "Simulation" },
   { id: "how-it-works", label: "How It Works" },
-  { id: "features", label: "Features" },
-  { id: "preview", label: "Platform Preview" },
-  { id: "security", label: "Security & Trust" },
+  { id: "comparison", label: "Why PRAVYA" },
+  { id: "preview", label: "Preview" },
+  { id: "security", label: "Security" },
 ];
 
 const groups = [

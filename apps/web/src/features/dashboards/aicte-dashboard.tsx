@@ -14,6 +14,7 @@ import {
   CoverageBadge,
   DashboardFilters,
   DashboardTable,
+  DashboardTableRow,
   MetricCard,
   StatusDonut,
   countValue,
@@ -258,7 +259,15 @@ export function AicteDashboard() {
               : "Compare current activated declarations and assessment freshness across permitted institutions."}
           </p>
         </div>
-        <span className="status-badge neutral">Synthetic data</span>
+        <div className="dashboard-actions">
+          <Link className="button secondary" href="/aicte/institutions">
+            Institutions directory
+          </Link>
+          <Link className="button secondary" href="/reports">
+            Reports center
+          </Link>
+          <span className="status-badge neutral">Synthetic demo data</span>
+        </div>
       </header>
       <section className="panel dashboard-panel" aria-label="Dashboard filters">
         <DashboardFilters
@@ -359,6 +368,7 @@ export function AicteDashboard() {
                   ? "Partial result; some institution summaries failed"
                   : "Activated snapshots only; historical and candidate uploads excluded"
               }
+              tone="neutral"
             />
             <MetricCard
               label="Active enrolments"
@@ -372,6 +382,7 @@ export function AicteDashboard() {
                       : displayCount(totals.active)
               }
               note="Internal status accounting, not official policy"
+              tone={allNoDeclarations ? "neutral" : "success"}
             />
             <MetricCard
               label="Programme declaration coverage"
@@ -387,6 +398,7 @@ export function AicteDashboard() {
                   ? "Coverage among successful summaries only"
                   : "Missing declarations remain separate from zero counts"
               }
+              tone="neutral"
             />
             {isOfficer ? (
               <MetricCard
@@ -405,12 +417,20 @@ export function AicteDashboard() {
                     ? `${historyErrors} institution histories unavailable; assessment coverage is incomplete`
                     : `${assessmentCounts.Unavailable ?? 0} unavailable assessment(s); unavailable overlap metrics are never zero`
                 }
+                tone={
+                  (assessmentCounts.Stale ?? 0) +
+                    (assessmentCounts.Incomplete ?? 0) >
+                  0
+                    ? "warning"
+                    : "neutral"
+                }
               />
             ) : (
               <MetricCard
                 label="Institutions in view"
                 value={visibleInstitutions.length.toLocaleString()}
                 note="Institution metadata and aggregate declarations only"
+                tone="neutral"
               />
             )}
           </section>
@@ -585,7 +605,7 @@ export function AicteDashboard() {
                                         tone: "active" as const,
                                       };
                       return (
-                        <tr key={item.id}>
+                        <DashboardTableRow key={item.id} index={index}>
                           <th scope="row">
                             <Link
                               href={`/aicte/institutions/${item.id}`}
@@ -615,7 +635,7 @@ export function AicteDashboard() {
                                   : ""}
                             </small>
                           </td>
-                          <td>
+                          <td className="numeral-strong">
                             {result?.isError
                               ? "Unavailable"
                               : data && coverage?.status === "NONE"
@@ -624,7 +644,7 @@ export function AicteDashboard() {
                                     valueObject(data?.totals)?.declared_records,
                                   )}
                           </td>
-                          <td>
+                          <td className="numeral-strong">
                             {result?.isError
                               ? "Unavailable"
                               : data && coverage?.status === "NONE"
@@ -656,7 +676,7 @@ export function AicteDashboard() {
                               <small>{freshness?.note}</small>
                             </td>
                           )}
-                        </tr>
+                        </DashboardTableRow>
                       );
                     })}
                   </tbody>

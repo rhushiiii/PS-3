@@ -118,7 +118,12 @@ class RedactingFilter(logging.Filter):
         except (TypeError, ValueError):
             message = str(record.msg)
         record.msg = redact_text(message)
-        record.args = None
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            record.args = tuple(
+                redact_text(str(a)) if isinstance(a, str) else a for a in record.args
+            )
+        else:
+            record.args = ()
         if record.exc_info and not record.exc_text:
             record.exc_text = logging.Formatter().formatException(record.exc_info)
         if record.exc_text:

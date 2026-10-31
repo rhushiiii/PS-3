@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import httpx2
+import httpx
 from openpyxl import Workbook
 from pydantic import SecretStr, ValidationError
 

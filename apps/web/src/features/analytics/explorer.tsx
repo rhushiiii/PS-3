@@ -11,6 +11,7 @@ import type { components } from "@/lib/api/generated";
 import {
   CategoryBars,
   DashboardTable,
+  DashboardTableRow,
   MetricCard,
   prettyLabel,
 } from "@/features/dashboards/components";
@@ -499,7 +500,10 @@ function TrendsView({ data, officer }: { data: Trends; officer: boolean }) {
         </thead>
         <tbody>
           {data.data.map((row, index) => (
-            <tr key={`${trendLabel(row, data.group_by)}-${index}`}>
+            <DashboardTableRow
+              key={`${trendLabel(row, data.group_by)}-${index}`}
+              index={index}
+            >
               <th scope="row">
                 {row.institution_id && row.institution_name ? (
                   <>
@@ -523,7 +527,7 @@ function TrendsView({ data, officer }: { data: Trends; officer: boolean }) {
                     : prettyLabel(row.status)}
                 </span>
               </td>
-              <td>{num(row.active_records)}</td>
+              <td className="numeral-strong">{num(row.active_records)}</td>
               <td>{num(row.declared_records)}</td>
               <td>{num(row.unclassified_active_records)}</td>
               <td>
@@ -539,7 +543,7 @@ function TrendsView({ data, officer }: { data: Trends; officer: boolean }) {
               <td>
                 {row.programmes_with_current_snapshot} of {row.programmes_total}
               </td>
-            </tr>
+            </DashboardTableRow>
           ))}
         </tbody>
       </DashboardTable>
@@ -591,9 +595,10 @@ function CompletenessView({
             </tr>
           </thead>
           <tbody>
-            {data.data.map((row) => (
-              <tr
+            {data.data.map((row, index) => (
+              <DashboardTableRow
                 key={`${row.institution_id}-${row.programme_id}-${row.academic_year}`}
+                index={index}
               >
                 <th scope="row">
                   <InstitutionCell
@@ -625,14 +630,22 @@ function CompletenessView({
                     ? num(row.current_declared_records)
                     : NO_DATA}
                 </td>
-                <td>{row.shortfall === null ? "—" : num(row.shortfall)}</td>
+                <td>
+                  {row.shortfall === null ? (
+                    "—"
+                  ) : row.shortfall > 0 ? (
+                    <span className="shortfall-highlight">-{num(row.shortfall)}</span>
+                  ) : (
+                    num(row.shortfall)
+                  )}
+                </td>
                 <td>{row.pending_candidate_count}</td>
                 <td>
                   {row.last_activated_at
                     ? when(row.last_activated_at)
                     : NO_DATA}
                 </td>
-              </tr>
+              </DashboardTableRow>
             ))}
           </tbody>
         </DashboardTable>
@@ -655,17 +668,23 @@ function CompletenessView({
             </tr>
           </thead>
           <tbody>
-            {data.rollups_by_region.map((row) => (
-              <tr key={row.region}>
+            {data.rollups_by_region.map((row, index) => (
+              <DashboardTableRow key={row.region} index={index}>
                 <th scope="row">{row.region}</th>
                 <td>{row.institutions_total}</td>
                 <td>{row.programme_years_total}</td>
                 <td>{row.with_declaration}</td>
                 <td>{row.with_current_snapshot}</td>
                 <td>{row.stale}</td>
-                <td>{row.with_shortfall}</td>
+                <td>
+                  {row.with_shortfall > 0 ? (
+                    <span className="shortfall-count-alert">{row.with_shortfall}</span>
+                  ) : (
+                    row.with_shortfall
+                  )}
+                </td>
                 <td>{row.pending_candidates}</td>
-              </tr>
+              </DashboardTableRow>
             ))}
           </tbody>
         </DashboardTable>
@@ -713,9 +732,10 @@ function UtilisationView({
             </tr>
           </thead>
           <tbody>
-            {data.data.map((row) => (
-              <tr
+            {data.data.map((row, index) => (
+              <DashboardTableRow
                 key={`${row.institution_id}-${row.programme_id}-${row.academic_year}-${row.category}`}
+                index={index}
               >
                 <th scope="row">
                   <InstitutionCell
@@ -736,14 +756,16 @@ function UtilisationView({
                   </span>
                 </td>
                 <td>{num(row.approved_seats)}</td>
-                <td>{num(row.current_active)}</td>
-                <td>{num(row.utilisation_pct, "%")}</td>
+                <td className="numeral-strong">{num(row.current_active)}</td>
+                <td className={row.utilisation_pct && row.utilisation_pct > 100 ? "numeral-critical" : undefined}>
+                  {num(row.utilisation_pct, "%")}
+                </td>
                 <td>{num(row.remaining_capacity)}</td>
                 <td>
                   {row.exceeded === null ? (
                     "—"
                   ) : row.exceeded ? (
-                    <span className="status-badge warning">
+                    <span className="status-badge danger">
                       Exceeded by {row.excess ?? 0}
                     </span>
                   ) : (
@@ -751,7 +773,7 @@ function UtilisationView({
                   )}
                 </td>
                 <td>{row.calculation}</td>
-              </tr>
+              </DashboardTableRow>
             ))}
           </tbody>
         </DashboardTable>
@@ -766,16 +788,23 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
     <>
       <div className="dashboard-metrics">
         <MetricCard label="All cases" value={totals.all} note="In scope" />
-        <MetricCard label="Open" value={totals.open} note="Not yet closed" />
+        <MetricCard
+          label="Open"
+          value={totals.open}
+          note="Not yet closed"
+          tone={totals.open > 0 ? "warning" : "neutral"}
+        />
         <MetricCard
           label="Overdue"
           value={totals.overdue}
           note="Past due date"
+          tone={totals.overdue > 0 ? "critical" : "neutral"}
         />
         <MetricCard
           label="Escalated"
           value={totals.escalated}
           note="Escalated cases"
+          tone={totals.escalated > 0 ? "critical" : "neutral"}
         />
       </div>
 
@@ -797,10 +826,10 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
           </tr>
         </thead>
         <tbody>
-          {data.ageing.map((b) => (
-            <tr key={b.bucket}>
+          {data.ageing.map((b, index) => (
+            <DashboardTableRow key={b.bucket} index={index}>
               <th scope="row">{b.bucket}</th>
-              <td>{b.count}</td>
+              <td className="numeral-strong">{b.count}</td>
               {officer && (
                 <td>
                   <Link href={`/cases?min_age_days=${b.min_days}`}>
@@ -808,7 +837,7 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
                   </Link>
                 </td>
               )}
-            </tr>
+            </DashboardTableRow>
           ))}
         </tbody>
       </DashboardTable>
@@ -824,8 +853,8 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
           </tr>
         </thead>
         <tbody>
-          {data.by_status.map((s) => (
-            <tr key={s.status}>
+          {data.by_status.map((s, index) => (
+            <DashboardTableRow key={s.status} index={index}>
               <th scope="row">
                 {officer ? (
                   <Link href={`/cases?status=${s.status}`}>
@@ -836,9 +865,21 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
                 )}
               </th>
               <td>{s.total}</td>
-              <td>{s.overdue}</td>
-              <td>{s.escalated}</td>
-            </tr>
+              <td>
+                {s.overdue > 0 ? (
+                  <span className="overdue-highlight">{s.overdue}</span>
+                ) : (
+                  s.overdue
+                )}
+              </td>
+              <td>
+                {s.escalated > 0 ? (
+                  <span className="escalated-highlight">{s.escalated}</span>
+                ) : (
+                  s.escalated
+                )}
+              </td>
+            </DashboardTableRow>
           ))}
         </tbody>
       </DashboardTable>
@@ -856,14 +897,14 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
           </tr>
         </thead>
         <tbody>
-          {data.resolution_days.map((r) => (
-            <tr key={r.priority}>
+          {data.resolution_days.map((r, index) => (
+            <DashboardTableRow key={r.priority} index={index}>
               <th scope="row">{prettyLabel(r.priority)}</th>
-              <td>{r.resolved_count}</td>
+              <td className="numeral-strong">{r.resolved_count}</td>
               <td>{num(r.mean_days)}</td>
               <td>{num(r.median_days)}</td>
               <td>{num(r.p90_days)}</td>
-            </tr>
+            </DashboardTableRow>
           ))}
         </tbody>
       </DashboardTable>
@@ -884,8 +925,8 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
             </tr>
           </thead>
           <tbody>
-            {data.data.map((row) => (
-              <tr key={row.institution_id}>
+            {data.data.map((row, index) => (
+              <DashboardTableRow key={row.institution_id} index={index}>
                 <th scope="row">
                   <InstitutionCell
                     id={row.institution_id}
@@ -895,7 +936,13 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
                 </th>
                 <td>{row.region}</td>
                 <td>{row.open}</td>
-                <td>{row.overdue}</td>
+                <td>
+                  {row.overdue > 0 ? (
+                    <span className="overdue-highlight">{row.overdue}</span>
+                  ) : (
+                    row.overdue
+                  )}
+                </td>
                 <td>{row.resolved}</td>
                 {officer && (
                   <td>
@@ -904,7 +951,7 @@ function CasesView({ data, officer }: { data: CasePerf; officer: boolean }) {
                     </Link>
                   </td>
                 )}
-              </tr>
+              </DashboardTableRow>
             ))}
           </tbody>
         </DashboardTable>

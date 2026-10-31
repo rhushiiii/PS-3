@@ -14,6 +14,11 @@ import {
   MetricCard,
   StatusDonut,
 } from "@/features/dashboards/components";
+import { HeroTelemetry } from "./components/hero-telemetry";
+import { ImpactMetrics } from "./components/impact-metrics";
+import { SolutionTabs } from "./components/solution-tabs";
+import { ValidationSimulator } from "./components/validation-simulator";
+import { ComparisonMatrix } from "./components/comparison-matrix";
 
 const pillars = [
   {
@@ -33,46 +38,19 @@ const pillars = [
 const steps = [
   {
     title: "Upload Records",
-    body: "An institution administrator submits a complete admissions snapshot as a structured CSV. The upload is stored as an immutable candidate.",
+    body: "An institution administrator submits a complete admissions snapshot as a structured CSV. The upload is stored as an immutable candidate with SHA-256 integrity.",
   },
   {
     title: "Validate Rules",
-    body: "Local APAAR format checks and configured intake rules run against the candidate, producing a deterministic, repeatable result.",
+    body: "Local APAAR format checks and configured intake capacity rules run deterministically against the candidate.",
   },
   {
     title: "Flag Exceptions",
-    body: "Missing fields, format issues and potential cross-institution duplicates are surfaced as evidence-linked findings — leads, not verdicts.",
+    body: "Missing fields, format exceptions and potential cross-institution duplicates surface as evidence-linked leads — never automated penalties.",
   },
   {
-    title: "Review & Resolve",
-    body: "An officer reviews findings in context, can request verification or open a case, and the institution's correction becomes a new version.",
-  },
-];
-
-const features = [
-  {
-    title: "APAAR format validation",
-    body: "Structural checks run locally against configured rules. Explicitly labeled as local format checking, never official government identity verification.",
-  },
-  {
-    title: "Admission record management",
-    body: "Every uploaded batch is stored as a permanent, append-only version, with full provenance of who submitted what and when.",
-  },
-  {
-    title: "Intake rule checks",
-    body: "Declared admissions are compared against configured category and seat-capacity rules, with missing configuration surfaced rather than assumed.",
-  },
-  {
-    title: "Evidence-linked review",
-    body: "Findings carry rule codes and redacted evidence. A finding is a lead for officer review, never an automatic determination.",
-  },
-  {
-    title: "Exception tracking",
-    body: "Officers can open a case against specific records, request a correction, and track its resolution on an append-only timeline.",
-  },
-  {
-    title: "Audit trails and accountability",
-    body: "Snapshot activation requires explicit review and acknowledgment. Every state-changing action is recorded with actor and timestamp.",
+    title: "Review & Activate",
+    body: "An AICTE officer reviews findings in context, requests corrections if necessary, and activates approved snapshots with full audit receipts.",
   },
 ];
 
@@ -117,7 +95,7 @@ function Reveal({
       className={className}
       initial={reduce ? undefined : "hidden"}
       whileInView="show"
-      viewport={{ once: true, amount: 0.25 }}
+      viewport={{ once: true, amount: 0.2 }}
       variants={container}
     >
       {children}
@@ -176,34 +154,42 @@ export function LandingPage() {
   const reduce = useReducedMotion();
   return (
     <main className="landing-page">
+      {/* Hero Section */}
       <section className="landing-hero">
         <TricolorCanvas className="landing-hero-canvas" />
+        <HeroTelemetry />
+
         <motion.div
           className="landing-hero-content"
           initial={reduce ? undefined : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
         >
-          <p className="eyebrow hero-eyebrow">APAAR-AWARE ADMISSIONS REVIEW</p>
+          <div className="hero-pill-badge">
+            <span className="badge-pulse-indicator" />
+            <span>AICTE SIH26263 PROTOTYPE · DETERMINISTIC ADMISSION GOVERNANCE</span>
+          </div>
+
           <h1 className="hero-headline">
             <span className="gradient-text">Smarter Admissions.</span>
             <br />
             Stronger Trust.
           </h1>
           <p className="landing-lede hero-lede">
-            A deterministic, evidence-linked workflow for validating local APAAR
-            format and intake rules, reviewing exceptions, and keeping an
-            auditable trail — for AICTE-approved institutions.
+            A deterministic, evidence-linked platform for validating local APAAR
+            syntax, enforcing intake category quotas, and providing AICTE officers with
+            tamper-evident audit receipts.
           </p>
           <div className="landing-cta">
-            <a className="button primary" href="#overview">
-              Explore Platform
+            <a className="button primary" href="#solutions">
+              Explore Solution Suite
             </a>
-            <a className="button secondary ghost" href="#how-it-works">
-              How It Works
+            <a className="button secondary ghost" href="#simulator">
+              Try Interactive Simulator
             </a>
           </div>
         </motion.div>
+
         <motion.a
           href="#overview"
           className="scroll-indicator"
@@ -215,6 +201,10 @@ export function LandingPage() {
         </motion.a>
       </section>
 
+      {/* Impact Metrics Strip */}
+      <ImpactMetrics />
+
+      {/* Overview Pillars */}
       <section className="landing-section" id="overview">
         <Reveal className="landing-section-heading page-heading">
           <motion.p variants={item} className="eyebrow">
@@ -243,33 +233,19 @@ export function LandingPage() {
         </Reveal>
       </section>
 
+      {/* Interactive Solution Suite (EduERP Style Tabs) */}
+      <SolutionTabs />
+
+      {/* Hands-On Validation Simulator */}
+      <ValidationSimulator />
+
+      {/* How It Works Timeline */}
       <HowItWorks />
 
-      <section className="landing-section" id="features">
-        <div className="page-heading landing-section-heading">
-          <p className="eyebrow">CAPABILITIES</p>
-          <h2>Built around evidence, not assumptions</h2>
-          <p>
-            All data shown anywhere in this platform is synthetic. Nothing here
-            is, or claims to be, connected to a real government system.
-          </p>
-        </div>
-        <Reveal className="feature-grid">
-          {features.map((feature) => (
-            <motion.article
-              key={feature.title}
-              className="feature-card"
-              variants={item}
-              whileHover={reduce ? undefined : { y: -4 }}
-              transition={{ duration: 0.3 }}
-            >
-              <h3>{feature.title}</h3>
-              <p>{feature.body}</p>
-            </motion.article>
-          ))}
-        </Reveal>
-      </section>
+      {/* Legacy vs. PRAVYA Comparison Matrix */}
+      <ComparisonMatrix />
 
+      {/* Platform Dashboard Preview */}
       <section className="landing-section" id="preview">
         <div className="page-heading landing-section-heading">
           <p className="eyebrow">PLATFORM PREVIEW</p>
@@ -326,6 +302,7 @@ export function LandingPage() {
         </Reveal>
       </section>
 
+      {/* Security & Trust */}
       <section className="landing-section" id="security">
         <div className="page-heading landing-section-heading">
           <p className="eyebrow">SECURITY & TRUST</p>
@@ -345,6 +322,7 @@ export function LandingPage() {
         </Reveal>
       </section>
 
+      {/* Final CTA */}
       <section className="landing-final-cta">
         <motion.div
           initial={reduce ? undefined : { opacity: 0, y: 16 }}
@@ -354,7 +332,7 @@ export function LandingPage() {
         >
           <h2>Bring Clarity to Every Admission.</h2>
           <p>
-            Sign in to open your permitted workspace and see the review flow end
+            Sign in to open your permitted workspace and explore the review flow end
             to end.
           </p>
           <Link className="button primary large" href="/login">
@@ -363,6 +341,7 @@ export function LandingPage() {
         </motion.div>
       </section>
 
+      {/* Footer */}
       <footer className="landing-footer">
         <div className="landing-footer-brand">
           <strong>PRAVYA</strong>

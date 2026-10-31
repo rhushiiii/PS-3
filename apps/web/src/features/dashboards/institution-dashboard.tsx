@@ -16,6 +16,7 @@ import {
   CoverageBadge,
   DashboardFilters,
   DashboardTable,
+  DashboardTableRow,
   MetricCard,
   StatusDonut,
   countValue,
@@ -60,37 +61,58 @@ function CorrectionRequestsCard() {
     enabled: !!session,
     queryFn: () => count(true),
   });
+  const hasOverdue = (overdue.data?.pagination.total ?? 0) > 0;
   return (
     <section
-      className="panel dashboard-panel"
+      className={`panel dashboard-panel ${hasOverdue ? "panel-critical-alert" : ""}`}
       aria-labelledby="correction-requests-title"
     >
-      <h2 id="correction-requests-title">Open correction requests</h2>
+      <div className="panel-header-inline">
+        <h2 id="correction-requests-title">Open correction requests</h2>
+        {hasOverdue && (
+          <span className="status-badge danger">
+            Action required · Overdue cases
+          </span>
+        )}
+      </div>
       <div aria-live="polite">
         {open.isPending ? (
           <Loading label="Loading correction requests…" />
         ) : open.isError ? (
           <ErrorPanel error={open.error} retry={() => void open.refetch()} />
         ) : (
-          <p>
+          <p className="correction-summary-text">
             <strong>{open.data.pagination.total.toLocaleString()}</strong> case
             {open.data.pagination.total === 1 ? "" : "s"} awaiting your
             correction
-            {overdue.data
-              ? ` · ${overdue.data.pagination.total.toLocaleString()} overdue`
-              : overdue.isError
-                ? " · overdue count unavailable"
-                : ""}
+            {overdue.data ? (
+              hasOverdue ? (
+                <>
+                  {" · "}
+                  <span className="overdue-highlight">
+                    {overdue.data.pagination.total.toLocaleString()} overdue
+                  </span>
+                </>
+              ) : (
+                ` · 0 overdue`
+              )
+            ) : overdue.isError ? (
+              " · overdue count unavailable"
+            ) : (
+              ""
+            )}
             .
           </p>
         )}
       </div>
-      <p>
-        <Link href="/cases?status=AWAITING_CORRECTION">
-          View correction requests
+      <p className="card-quick-links">
+        <Link href="/cases?status=AWAITING_CORRECTION" className="quick-link-primary">
+          View correction requests →
         </Link>
-        {" · "}
-        <Link href="/records">Student registry</Link>
+        <span className="divider-dot">·</span>
+        <Link href="/records" className="quick-link-secondary">
+          Student registry
+        </Link>
       </p>
     </section>
   );
@@ -233,9 +255,17 @@ export function InstitutionDashboard({
           </h2>
           <p>Current activated declarations for the selected academic year.</p>
         </div>
-        <Link className="button primary" href="/institution/upload">
-          Upload another candidate
-        </Link>
+        <div className="dashboard-actions">
+          <Link className="button primary" href="/institution/upload">
+            ↑ Upload candidate batch
+          </Link>
+          <Link className="button secondary" href="/records">
+            Student registry
+          </Link>
+          <Link className="button secondary" href="/submissions">
+            Submissions history
+          </Link>
+        </div>
       </header>
       <CorrectionRequestsCard />
       {institution.isError && (
@@ -338,6 +368,7 @@ export function InstitutionDashboard({
                   ? "Available activated programme snapshots only"
                   : "Activated snapshots only; candidates and history excluded"
               }
+              tone="neutral"
             />
             <MetricCard
               label="Active enrolments"
@@ -347,11 +378,19 @@ export function InstitutionDashboard({
                   : displayCount(counts?.demo_active_records)
               }
               note="Internal status accounting, not official policy"
+              tone={coverageStatus !== "NONE" ? "success" : "neutral"}
             />
             <MetricCard
               label="Programme coverage"
               value={`${displayCount(coverage?.with_current_snapshot)} / ${displayCount(coverage?.programmes)}`}
               note={`${coverageStatus === "NONE" ? "No current declarations" : prettyLabel(coverageStatus)} · missing is not zero`}
+              tone={
+                coverageStatus === "PARTIAL"
+                  ? "warning"
+                  : coverageStatus === "COMPLETE"
+                    ? "success"
+                    : "neutral"
+              }
             />
             <MetricCard
               label="Configured intake comparisons"
@@ -361,6 +400,7 @@ export function InstitutionDashboard({
                   : intakeRows.length.toLocaleString()
               }
               note="Illustrative category rules; not official AICTE compliance"
+              tone="neutral"
             />
           </section>
           <div className="dashboard-grid">
@@ -416,10 +456,10 @@ export function InstitutionDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {summaryPrograms.map((item) => {
+                  {summaryPrograms.map((item, index) => {
                     const programCounts = valueObject(item.counts);
                     return (
-                      <tr key={item.programme_id}>
+                      <DashboardTableRow key={item.programme_id} index={index}>
                         <th scope="row">
                           {programmeNames.get(item.programme_id) ??
                             item.programme_code}
@@ -436,7 +476,7 @@ export function InstitutionDashboard({
                             </span>
                           )}
                         </td>
-                        <td>
+                        <td className="numeral-strong">
                           {item.has_current_snapshot
                             ? displayCount(programCounts?.declared_records)
                             : "—"}
@@ -446,7 +486,7 @@ export function InstitutionDashboard({
                             ? displayCount(programCounts?.demo_active_records)
                             : "—"}
                         </td>
-                      </tr>
+                      </DashboardTableRow>
                     );
                   })}
                   {summaryPrograms.length === 0 && (
