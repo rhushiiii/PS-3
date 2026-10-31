@@ -32,16 +32,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 export function errorMessage(error: unknown): string {
   if (!(error instanceof ApiError))
-    return "We couldn’t reach the local API. Check that it is running and try again.";
+    return "We couldn’t reach the API. Check that it is running and try again.";
   switch (error.code) {
     case "DATABASE_UNAVAILABLE":
       return "The database is unavailable. Your information has not been replaced with sample values. Please try again.";
     case "DEMO_LOCAL_ONLY":
       return "Access requires a direct local connection and an approved browser origin.";
+    case "DEMO_ORIGIN_DENIED":
+      return "This demo site is not allowed to connect to the API.";
     case "NOT_AUTHENTICATED":
       return "This account is unavailable. Check that the local synthetic accounts have been seeded.";
     case "INVALID_RESPONSE":
-      return "The API returned an unexpected response. Please check the local setup.";
+      return "The API returned an unexpected response. Please check the setup.";
     case "RATE_LIMITED":
       return error.retryAfter
         ? `Too many requests. Please wait ${error.retryAfter} seconds and try again.`
@@ -66,8 +68,11 @@ export function apiBase(): string {
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api/v1";
   const url = new URL(base);
   if (
-    !new Set(["localhost", "127.0.0.1", "[::1]"]).has(url.hostname) ||
-    !["http:", "https:"].includes(url.protocol) ||
+    (url.protocol !== "https:" &&
+      !(
+        url.protocol === "http:" &&
+        new Set(["localhost", "127.0.0.1", "[::1]"]).has(url.hostname)
+      )) ||
     url.username ||
     url.password ||
     url.search ||

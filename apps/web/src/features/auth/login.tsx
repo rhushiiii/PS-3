@@ -69,9 +69,8 @@ export function Login() {
             <section className="disabled-notice" role="status">
               <h2>Sign-in is disabled</h2>
               <p>
-                The local sign-in interface must be explicitly enabled by the
-                operator. Backend authentication must also be configured for
-                direct local access.
+                Demo sign-in must be explicitly enabled by the operator. Backend
+                demo authentication must also be configured.
               </p>
             </section>
           ) : (
@@ -105,7 +104,7 @@ export function Login() {
                 <div className="login-error" role="alert">
                   <p>
                     {error instanceof ApiError && error.status === 404
-                      ? "Sign-in is unavailable. Check that the local API has authentication enabled."
+                      ? "Sign-in is unavailable. Check that the API has demo authentication enabled."
                       : errorMessage(error)}
                   </p>
                   {error instanceof ApiError && error.requestId && (

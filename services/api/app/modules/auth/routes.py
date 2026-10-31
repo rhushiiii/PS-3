@@ -26,7 +26,7 @@ router = APIRouter(
 )
 demo_router = APIRouter(
     prefix="/api/v1/auth",
-    tags=["Local demo authentication"],
+    tags=["Demo authentication"],
     responses={
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},

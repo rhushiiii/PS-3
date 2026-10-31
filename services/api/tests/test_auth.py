@@ -12,12 +12,18 @@ from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from starlette.requests import Request
 
 from app.core.config import Settings
 from app.main import create_app
 from app.modules.audit.models import AuditEvent
 from app.modules.auth.models import User
-from app.modules.auth.services import AUDIENCE, ISSUER, DemoTokenVerifier
+from app.modules.auth.services import (
+    AUDIENCE,
+    ISSUER,
+    DemoTokenVerifier,
+    require_demo_access,
+)
 from app.modules.institutions.models import Institution
 from app.seed import seed_id
 
@@ -51,6 +57,43 @@ def test_demo_configuration_fails_closed(
                 **overrides,
             }
         )
+
+
+def test_public_demo_requires_explicit_https_origin_and_secret(
+    settings: Settings,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            database_url=settings.database_url,
+            app_env="production",
+            demo_auth=True,
+            demo_public_access=True,
+            demo_auth_secret=SecretStr("x" * 48),
+            cors_origins=["http://example.com"],
+        )
+    public = Settings(
+        _env_file=None,
+        database_url=settings.database_url,
+        app_env="production",
+        demo_auth=True,
+        demo_public_access=True,
+        demo_auth_secret=SecretStr("x" * 48),
+        cors_origins=["https://example.com"],
+    )
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/auth/demo-login",
+            "scheme": "https",
+            "server": ("api.example.com", 443),
+            "client": ("203.0.113.10", 1234),
+            "headers": [(b"origin", b"https://example.com")],
+        }
+    )
+    require_demo_access(request, public)
+    assert DemoTokenVerifier(public).ttl_seconds == 900
 
 
 def test_disabled_login_and_authentication(settings: Settings) -> None:

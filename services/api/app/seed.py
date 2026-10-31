@@ -1,5 +1,6 @@
-"""Run explicitly with python -m app.seed; never run automatically at startup."""
+"""Seed synthetic demo data explicitly or once on an empty deployment."""
 
+import argparse
 import json
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -61,8 +62,10 @@ def ensure_fixture[Model: Base](
 
 
 def seed_demo(session: Session, settings: Settings) -> dict[str, int]:
-    if settings.app_env != "local" or not settings.demo_auth:
-        raise ValueError("Seeding requires explicitly enabled local demo mode")
+    if not settings.demo_auth or not (
+        settings.app_env == "local" or settings.demo_public_access
+    ):
+        raise ValueError("Seeding requires explicitly enabled demo mode")
     created = 0
     for index, slug in enumerate(("cedar", "maple", "willow"), start=1):
         institution_id = seed_id("institutions", slug)
@@ -154,16 +157,24 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, int]:
     return {"created": created, "expected_fixture_records": 46}
 
 
-def main() -> int:
+def main(if_empty: bool = False) -> int:
     try:
         settings = Settings()
-        # Refuse before opening a connection if the local demo opt-in is absent.
-        if settings.app_env != "local" or not settings.demo_auth:
-            raise ValueError("Local demo mode is required")
+        # Refuse before opening a connection if demo mode is not explicit.
+        if not settings.demo_auth or not (
+            settings.app_env == "local" or settings.demo_public_access
+        ):
+            raise ValueError("Demo mode is required")
         engine = build_engine(settings)
         try:
             with Session(engine) as session, session.begin():
-                result = seed_demo(session, settings)
+                if (
+                    if_empty
+                    and session.get(User, seed_id("users", "demo_verifier")) is not None
+                ):
+                    result = {"created": 0, "already_seeded": True}
+                else:
+                    result = seed_demo(session, settings)
         finally:
             engine.dispose()
     except (ValueError, SQLAlchemyError):
@@ -177,4 +188,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--if-empty", action="store_true")
+    raise SystemExit(main(if_empty=parser.parse_args().if_empty))

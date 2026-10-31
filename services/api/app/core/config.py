@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     database_url: SecretStr
     cors_origins: list[str] = ["http://localhost:3000"]
     demo_auth: bool = False
+    demo_public_access: bool = False
     app_env: Literal["local", "production"] = "production"
     demo_auth_secret: SecretStr | None = None
     demo_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
@@ -91,9 +92,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def restrict_demo_mode(self) -> Self:
         if not self.demo_auth:
+            if self.demo_public_access:
+                raise ValueError("DEMO_PUBLIC_ACCESS requires DEMO_AUTH")
             return self
-        if self.app_env != "local":
-            raise ValueError("DEMO_AUTH requires APP_ENV=local")
+        if self.demo_public_access and self.app_env != "production":
+            raise ValueError("Public demo access requires APP_ENV=production")
+        if not self.demo_public_access and self.app_env != "local":
+            raise ValueError("Local demo access requires APP_ENV=local")
         if (
             self.demo_auth_secret is None
             or len(self.demo_auth_secret.get_secret_value().encode()) < 32
@@ -105,7 +110,14 @@ class Settings(BaseSettings):
             parsed = urlsplit(origin)
             if (
                 parsed.scheme not in {"http", "https"}
-                or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                or (
+                    not self.demo_public_access
+                    and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                )
+                or (
+                    self.demo_public_access
+                    and (parsed.scheme != "https" or not parsed.hostname)
+                )
                 or parsed.username is not None
                 or parsed.password is not None
                 or parsed.path not in {"", "/"}

@@ -1,0 +1,11 @@
+# Render Docker service: select Dockerfile.api and set DATABASE_URL, CORS_ORIGINS,
+# DEMO_AUTH, DEMO_PUBLIC_ACCESS and DEMO_AUTH_SECRET in the service environment.
+FROM python:3.13-slim-bookworm
+WORKDIR /workspace/services/api
+COPY services/api/requirements.txt services/api/requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock \
+    && groupadd --system app && useradd --system --gid app --home-dir /workspace app
+COPY services/api/ ./
+USER app
+ENV PYTHONUNBUFFERED=1
+CMD ["sh", "-c", "python -m alembic upgrade head && python -m app.seed --if-empty && exec python -m uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --no-proxy-headers"]
